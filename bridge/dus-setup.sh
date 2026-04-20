@@ -216,8 +216,17 @@ auto_config() {
         exit 1
     fi
 
-    # 下载 bridge 代码（如果项目目录下没有）
-    if [ ! -d "$PROJECT_ROOT/bridge/bridge" ]; then
+    # 下载 bridge 代码（如果项目目录下没有，且没有兄弟目录的 bridge 代码）
+    # 检查多种可能的位置
+    BRIDGE_FOUND=false
+    if [ -d "$PROJECT_ROOT/bridge/bridge" ]; then
+        BRIDGE_FOUND=true
+    elif [ -d "$PROJECT_ROOT/../bridge/bridge" ]; then
+        # 兄弟目录的 bridge 代码（如 /path/to/DUS/bridge/bridge）
+        BRIDGE_FOUND=true
+    fi
+
+    if [ "$BRIDGE_FOUND" = false ]; then
         log_info "下载 Bridge 代码..."
         cd "$PROJECT_ROOT"
         curl -sL "https://github.com/pwyyeye/dus/archive/refs/heads/main.zip" -o dus-main.zip
@@ -308,8 +317,8 @@ start_bridge() {
     cd "$DUS_DIR"
 
     # 设置 PYTHONPATH，指向 bridge 模块所在目录
-    # bridge 代码位于 $PROJECT_ROOT/bridge/bridge/main.py
-    export PYTHONPATH="$PROJECT_ROOT/bridge:$PYTHONPATH"
+    # bridge 代码位于 $PROJECT_ROOT/bridge/（作为模块目录）
+    export PYTHONPATH="$PROJECT_ROOT:$PYTHONPATH"
 
     # 启动 Bridge（后台运行）
     nohup python3 -m bridge.main > "$DUS_DIR/bridge-stdout.log" 2>&1 &
