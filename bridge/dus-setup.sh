@@ -206,15 +206,14 @@ auto_config() {
     log_info "使用自动配置模式..."
 
     API_URL="$DEFAULT_API_URL"
-    API_KEY="${DUS_API_KEY:-}"
+    # 自动生成 API Key（32位随机字符串）
+    API_KEY="$(openssl rand -hex 16 2>/dev/null || cat /dev/urandom | tr -dc 'a-zA-Z0-9' | fold -w 32 | head -1)"
     MACHINE_NAME="$(hostname) - $(basename "$PROJECT_ROOT")"
     POLL_INTERVAL="$DEFAULT_POLL_INTERVAL"
     TIMEOUT="$DEFAULT_TIMEOUT"
 
-    if [ -z "$API_KEY" ]; then
-        log_error "自动模式需要设置 DUS_API_KEY 环境变量"
-        exit 1
-    fi
+    log_info "自动生成 API Key: $API_KEY"
+    log_info "请在 Cloud 端配置相同的 Key 以便验证"
 
     # 下载 bridge 代码（如果项目目录下没有，且没有兄弟目录的 bridge 代码）
     # 检查多种可能的位置
