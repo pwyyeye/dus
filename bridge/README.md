@@ -30,13 +30,13 @@ bridge/
 
 ### 方式一：一键安装（推荐）
 
-在项目目录下运行一键安装脚本：
+在项目目录下下载并运行一键安装脚本：
 
 ```bash
 cd ~/projects/my-ai-project
-curl -sL https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.sh | bash
-# 或下载脚本后直接运行
-./dus-setup.sh
+curl -sLo dus-setup.sh https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.sh
+chmod +x dus-setup.sh
+./dus-setup.sh --auto
 ```
 
 脚本会自动：
@@ -44,6 +44,8 @@ curl -sL https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.sh 
 2. 生成配置文件（项目 ID、设备 ID 等）
 3. 安装 Python 依赖
 4. 启动 Bridge
+
+> 注意：`curl | bash` 方式无法传递参数，请先下载脚本再运行
 
 ### 方式二：手动安装
 
