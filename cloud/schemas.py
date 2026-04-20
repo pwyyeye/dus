@@ -29,6 +29,12 @@ class MachineStatus(str, Enum):
     offline = "offline"
 
 
+class AgentStatus(str, Enum):
+    idle = "idle"
+    busy = "busy"
+    offline = "offline"
+
+
 class TaskStatus(str, Enum):
     pending = "pending"
     dispatched = "dispatched"
@@ -67,6 +73,7 @@ class MachineResponse(BaseModel):
     agent_version: str | None
     status: MachineStatus
     is_enabled: bool = True
+    agent_status: AgentStatus = AgentStatus.offline
     last_poll_at: datetime | None
     registered_at: datetime
     pending_task_count: int = 0
@@ -82,6 +89,7 @@ class MachineListResponse(BaseModel):
     agent_capability: AgentCapability
     status: MachineStatus
     is_enabled: bool = True
+    agent_status: AgentStatus = AgentStatus.offline
     last_poll_at: datetime | None
 
     model_config = {"from_attributes": True}
@@ -95,6 +103,7 @@ class MachineDashboardResponse(BaseModel):
     agent_capability: AgentCapability
     status: MachineStatus
     is_enabled: bool = True
+    agent_status: AgentStatus = AgentStatus.offline
     last_poll_at: datetime | None
     running_tasks: list["TaskListResponse"] = []
     completed_tasks_count: int = 0
@@ -105,6 +114,7 @@ class MachineDashboardResponse(BaseModel):
 class MachineUpdateStatus(BaseModel):
     is_enabled: bool | None = None
     status: MachineStatus | None = None
+    agent_status: AgentStatus | None = None
 
 
 # ── Task Schemas ──

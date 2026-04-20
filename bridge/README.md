@@ -34,7 +34,7 @@ bridge/
 
 ```bash
 cd ~/projects/my-ai-project
-curl -sL https://raw.githubusercontent.com/your-org/dus/main/bridge/dus-setup.sh | bash
+curl -sL https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.sh | bash
 # 或下载脚本后直接运行
 ./dus-setup.sh
 ```

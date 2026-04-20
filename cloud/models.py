@@ -55,6 +55,7 @@ class Machine(Base):
     agent_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="offline")
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    agent_status: Mapped[str] = mapped_column(String(20), default="offline")
     last_poll_at: Mapped[datetime | None] = mapped_column(nullable=True)
     registered_at: Mapped[datetime] = mapped_column(default=utcnow)
 

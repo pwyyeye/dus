@@ -12,6 +12,7 @@ from schemas import (
     MachineResponse,
     MachineListResponse,
     MachineStatus,
+    AgentStatus,
     AgentType,
     ApiResponse,
     PollResponse,
@@ -136,6 +137,7 @@ async def get_machines_dashboard(db: AsyncSession = Depends(get_db)):
                 agent_capability=machine.agent_capability,
                 status=machine.status,
                 is_enabled=machine.is_enabled,
+                agent_status=machine.agent_status,
                 last_poll_at=machine.last_poll_at,
                 running_tasks=[TaskListResponse.model_validate(t) for t in running_tasks],
                 completed_tasks_count=completed_count,
@@ -185,6 +187,8 @@ async def update_machine(
         machine.is_enabled = payload.is_enabled
     if payload.status is not None:
         machine.status = payload.status.value
+    if payload.agent_status is not None:
+        machine.agent_status = payload.agent_status.value
 
     await db.flush()
 

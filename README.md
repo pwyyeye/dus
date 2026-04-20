@@ -83,6 +83,7 @@
 | `agent_capability` | enum | 能力：remote_execution（远程执行）/ manual_only（仅提醒） |
 | `status` | enum | 在线状态：online / offline |
 | `is_enabled` | bool | 是否启用（禁用后不接收新任务） |
+| `agent_status` | enum | Claude 状态：idle（空闲）/ busy（执行中）/ offline |
 
 ### Task（任务）
 | 字段 | 类型 | 说明 |
@@ -169,7 +170,7 @@ python -m bridge.main
 
 ```bash
 cd ~/projects/my-ai-project
-curl -sL https://raw.githubusercontent.com/your-org/dus/main/bridge/dus-setup.sh | bash
+curl -sL https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.sh | bash
 # 或下载脚本后直接运行
 ./dus-setup.sh
 ```
@@ -225,6 +226,11 @@ curl -sL https://raw.githubusercontent.com/your-org/dus/main/bridge/dus-setup.sh
 - 在项目目录下运行，自动完成依赖安装、配置生成、Bridge 启动
 - 支持多项目：每个项目目录独立运行 Bridge 实例
 - 使用 `project_id` 区分任务归属
+
+**终端 Claude 状态监控**
+- Bridge 定时上报 Claude Code 运行状态（idle / busy / offline）
+- `PATCH /machines/{uuid}` 接口支持更新 `agent_status`
+- 前端可实时显示终端 Claude 是否正在执行任务
 
 ---
 

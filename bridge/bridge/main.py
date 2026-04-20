@@ -28,6 +28,7 @@ class Bridge:
         )
         self.semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
         self._running = True
+        self._running_tasks = 0
 
     async def start(self):
         """Main entry: register then poll loop."""
@@ -49,15 +50,22 @@ class Bridge:
             except Exception as e:
                 logger.error(f"Poll loop error: {e}")
 
+            # Update agent status based on running tasks
+            agent_status = "busy" if self._running_tasks > 0 else "idle"
+            await self.api.update_agent_status(agent_status)
+
             await asyncio.sleep(self.config.cloud.poll_interval)
 
     async def _handle_task_safe(self, task: dict):
         """Handle task with concurrency limit and error safety."""
         async with self.semaphore:
+            self._running_tasks += 1
             try:
                 await self._handle_task(task)
             except Exception as e:
                 logger.error(f"Task {task.get('task_id', '?')} handler error: {e}")
+            finally:
+                self._running_tasks -= 1
 
     async def _handle_task(self, task: dict):
         """Route task to executor or reminder based on agent_capability."""

@@ -96,7 +96,7 @@ X-API-Key: your-api-key
 | GET | `/machines` | 机器列表（支持 status、agent_type 过滤） |
 | GET | `/machines/dashboard` | 仪表盘数据（含运行中任务、今日完成数） |
 | GET | `/machines/{uuid}` | 机器详情（含待执行任务数） |
-| PATCH | `/machines/{uuid}` | 更新机器状态（启用/禁用） |
+| PATCH | `/machines/{uuid}` | 更新机器状态（启用/禁用、agent状态） |
 | GET | `/machines/{uuid}/poll` | 机器轮询任务（支持 `?project_id=` 过滤） |
 
 ### 任务管理 `/api/v1/tasks`
@@ -131,6 +131,7 @@ X-API-Key: your-api-key
 | `agent_capability` | enum | 能力：remote_execution（远程执行）/ manual_only（仅提醒） |
 | `status` | enum | online / offline |
 | `is_enabled` | bool | 是否启用（禁用后不接收新任务） |
+| `agent_status` | enum | idle / busy / offline（Claude Code 执行状态） |
 
 ### Task（任务）
 

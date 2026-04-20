@@ -98,3 +98,10 @@ class ApiClient:
         """Trigger reminder for manual_only tasks."""
         result = await self._request("POST", f"/tasks/{task_id}/remind")
         return bool(result and result.get("success"))
+
+    async def update_agent_status(self, agent_status: str) -> bool:
+        """Update agent status (idle/busy/offline)."""
+        if not self.machine_uuid:
+            return False
+        result = await self._request("PATCH", f"/machines/{self.machine_uuid}", json={"agent_status": agent_status})
+        return bool(result and result.get("success"))
