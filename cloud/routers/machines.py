@@ -37,7 +37,7 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
         if not project:
             project = Project(
                 project_id=payload.project_id,
-                project_name=payload.project_name or payload.project_id,
+                project_name=payload.project_id,
             )
             db.add(project)
 
@@ -201,7 +201,7 @@ async def update_machine(
 @router.get("/{machine_uuid}/poll", response_model=PollResponse)
 async def poll_tasks(
     machine_uuid: uuid.UUID,
-    project_id: uuid.UUID | None = Query(default=None),
+    project_id: str | None = Query(default=None, description="项目标识，不验证UUID格式"),
     db: AsyncSession = Depends(get_db),
 ):
     """Device polls for pending tasks. Updates heartbeat and returns tasks.
@@ -222,7 +222,12 @@ async def poll_tasks(
         Task.status == "pending",
     )
     if project_id:
-        tasks_stmt = tasks_stmt.where(Task.project_id == project_id)
+        # Look up project by project_id string to get its UUID
+        project_stmt = select(Project).where(Project.project_id == project_id)
+        project_result = await db.execute(project_stmt)
+        project = project_result.scalar_one_or_none()
+        if project:
+            tasks_stmt = tasks_stmt.where(Task.project_id == project.id)
 
     tasks_stmt = tasks_stmt.order_by(Task.created_at.asc())
     tasks_result = await db.execute(tasks_stmt)

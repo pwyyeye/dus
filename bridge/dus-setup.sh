@@ -100,7 +100,7 @@ check_dependencies() {
     # 检查 httpx
     if ! python3 -c "import httpx" 2>/dev/null; then
         log_warn "httpx 未安装，正在安装..."
-        pip install httpx loguru pyyaml
+        python3 -m pip install --user --break-system-packages httpx loguru pyyaml
     fi
 
     # 检查 Claude
@@ -216,6 +216,22 @@ auto_config() {
         exit 1
     fi
 
+    # 下载 bridge 代码（如果项目目录下没有）
+    if [ ! -d "$PROJECT_ROOT/bridge/bridge" ]; then
+        log_info "下载 Bridge 代码..."
+        cd "$PROJECT_ROOT"
+        curl -sL "https://github.com/pwyyeye/dus/archive/refs/heads/main.zip" -o dus-main.zip
+        unzip -q -o dus-main.zip
+        # 解压后的目录名是 dus-main，包含 bridge/ cloud/ 等
+        if [ -d "dus-main/bridge" ]; then
+            # 只提取 bridge 目录
+            cp -r dus-main/bridge "$PROJECT_ROOT/bridge"
+            cp dus-main/bridge/dus-setup.sh "$PROJECT_ROOT/dus-setup.sh" 2>/dev/null || true
+        fi
+        rm -rf dus-main dus-main.zip
+        log_info "Bridge 代码已下载到 $PROJECT_ROOT/bridge"
+    fi
+
     log_info "配置完成"
 }
 
@@ -265,7 +281,7 @@ EOF
 install_dependencies() {
     log_info "安装 Python 依赖..."
 
-    pip install httpx loguru pyyaml --quiet
+    python3 -m pip install --user --break-system-packages httpx loguru pyyaml
 
     log_info "依赖安装完成"
 }
@@ -290,6 +306,10 @@ start_bridge() {
     log_info "启动 Bridge..."
 
     cd "$DUS_DIR"
+
+    # 设置 PYTHONPATH，指向 bridge 模块所在目录
+    # bridge 代码位于 $PROJECT_ROOT/bridge/bridge/main.py
+    export PYTHONPATH="$PROJECT_ROOT/bridge:$PYTHONPATH"
 
     # 启动 Bridge（后台运行）
     nohup python3 -m bridge.main > "$DUS_DIR/bridge-stdout.log" 2>&1 &
