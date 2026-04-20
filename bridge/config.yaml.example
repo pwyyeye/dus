@@ -1,0 +1,22 @@
+bridge:
+  version: "1.0.0"
+
+machine:
+  machine_id: "CHANGE_ME"                    # e.g. "macbook-pro-office"
+  machine_name: "CHANGE_ME"                  # e.g. "办公室 MacBook Pro"
+  agent_type: "claude_code"                  # claude_code | openclaw | hermes_agent | codex | windsurf
+  agent_capability: "remote_execution"       # remote_execution | manual_only
+  project_id: null                            # 关联的项目ID，不填则不关联项目
+
+cloud:
+  api_url: "http://localhost:8000/api/v1"
+  api_key: "CHANGE_ME"
+  poll_interval: 60                          # seconds
+
+agent:
+  path: "claude"                             # agent executable path
+  workdir_template: "/tmp/dus_task_{task_id}"
+  timeout: 3600
+
+logging:
+  level: "INFO"
