@@ -229,7 +229,9 @@ auto_config() {
         log_info "下载 Bridge 代码..."
         cd "$PROJECT_ROOT"
         curl -sL "https://github.com/pwyyeye/dus/archive/refs/heads/main.zip" -o dus-main.zip
-        unzip -q -o dus-main.zip
+        set +e
+        yes | unzip -o dus-main.zip >/dev/null 2>&1
+        set -e
         # 解压后的目录名是 dus-main，包含 bridge/ cloud/ 等
         if [ -d "dus-main/bridge" ]; then
             # 只提取 bridge 目录
