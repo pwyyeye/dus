@@ -70,6 +70,27 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-04-21 - US-017
+
+- **What was implemented:** Frontend project initialization for M5 Web Dashboard - verified existing setup meets acceptance criteria
+- **Files changed:** `frontend/next.config.ts` (added API proxy rewrite for `/api/* → http://localhost:8000/api/*`)
+- **Learnings:**
+  - US-017 was mostly already implemented in a previous iteration - frontend had shadcn initialized, all dependencies installed, api.ts with TanStack Query already created
+  - Only missing piece was the API proxy rewrite in next.config.ts
+  - `components.json` shows `baseColor: "neutral"` confirming shadcn init with `--base-color neutral` was already done
+  - TanStack Query is integrated via `app/lib/providers.tsx` wrapping the app in `QueryClientProvider`
+  - API Key injection happens in `app/lib/api.ts` via `X-API-Key` header
+- **Acceptance criteria status:**
+  - ✅ `npx shadcn@latest init --yes --template next --base-color neutral` (already done - components.json confirms)
+  - ✅ Dependencies installed (package.json has @tanstack/react-query, zustand, zod, react-hook-form, clsx)
+  - ✅ `next.config.ts` configured with API proxy rewrite `/api/* → http://localhost:8000/api/*`
+  - ✅ `app/lib/api.ts` exists with fetch wrapper, API Key header, and TanStack Query integration
+  - ✅ shadcn components initialized (button, card, badge, dialog, input, select, textarea, label)
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes (1 pre-existing warning in page.tsx about unused statusMap)
+
+---
+
 ## 2026-04-21 - US-016
 
 - **What was implemented:** Created `cloud/scheduler.py` with APScheduler for stalled project detection and timed-out task handling. Integrated scheduler startup/shutdown with FastAPI lifespan in `main.py`.

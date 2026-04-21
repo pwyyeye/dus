@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T03:26:56.653Z",
-  "currentIteration": 15,
+  "updatedAt": "2026-04-21T03:28:43.201Z",
+  "currentIteration": 16,
   "maxIterations": 50,
-  "tasksCompleted": 15,
+  "tasksCompleted": 16,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -107,8 +107,8 @@
       {
         "id": "US-016",
         "title": "M4 提醒系统 - APScheduler 定时提醒",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-017",
@@ -334,6 +334,16 @@
       "durationMs": 157230,
       "startedAt": "2026-04-21T03:22:01.692Z",
       "endedAt": "2026-04-21T03:24:38.922Z"
+    },
+    {
+      "iteration": 16,
+      "status": "completed",
+      "taskId": "US-016",
+      "taskTitle": "M4 提醒系统 - APScheduler 定时提醒",
+      "taskCompleted": true,
+      "durationMs": 136526,
+      "startedAt": "2026-04-21T03:24:40.125Z",
+      "endedAt": "2026-04-21T03:26:56.651Z"
     }
   ],
   "skippedTaskIds": [],
