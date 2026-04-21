@@ -1,0 +1,28 @@
+[Unit]
+Description=DUS Bridge - Distributed AI Terminal Unified Scheduling System
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/path/to/your/project
+Environment="PYTHONPATH=/path/to/your/project:/path/to/your/project/bridge"
+ExecStart=/usr/bin/python3 -m bridge.main
+Restart=always
+RestartSec=10
+
+StandardOutput=append:/path/to/your/project/.dus/bridge-stdout.log
+StandardError=append:/path/to/your/project/.dus/bridge-stderr.log
+
+# Resource limits
+LimitNOFILE=65536
+MemoryMax=512M
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/path/to/your/project/.dus
+
+[Install]
+WantedBy=default.target

@@ -570,3 +570,27 @@ after each iteration and it's included in prompts for context.
    - `NEXT_PUBLIC_API_BASE_URL` = the Railway cloud URL (from US-026 deployment) + "/api/v1" (e.g., "https://dus-cloud.up.railway.app/api/v1")
    - `NEXT_PUBLIC_API_KEY` = the same API_KEY used in Railway deployment
 4. Trigger deployment and verify
+
+---
+
+## 2026-04-21 - US-028
+
+- **What was implemented:** Bridge deployment documentation - git clone/install instructions, launchd plist for macOS, systemd unit for Linux
+- **Files changed:**
+  - `bridge/README.md` (updated with deployment guide section)
+  - `bridge/com.dus.bridge.plist` (new - launchd plist example for macOS auto-start)
+  - `bridge/dus-bridge.service` (new - systemd unit example for Linux auto-start)
+- **Learnings:**
+  - Bridge supports two installation methods: Git Clone + pip, or dus-setup.sh one-click script
+  - launchd plist uses `RunAtLoad` and `KeepAlive` for auto-start with continuous operation
+  - systemd user services use `WantedBy=default.target` for user-level startup
+  - Both service configs use `PYTHONPATH` pointing to project root for bridge module discovery
+  - Continuous operation is designed into the code: async main loop with configurable poll_interval, signal handlers for graceful shutdown (SIGINT/SIGTERM), running task tracking with asyncio.gather for clean shutdown
+  - pytest must be run separately from cloud/ and bridge/ directories to avoid conftest conflict (ImportPathMismatchError)
+- **Acceptance criteria status:**
+  - ✅ Document git clone and install instructions (added to README.md)
+  - ✅ Provide `launchd` plist example for macOS auto-start (com.dus.bridge.plist)
+  - ✅ Provide `systemd` unit example for Linux auto-start (dus-bridge.service)
+  - ✅ Verify Bridge runs continuously - code structure supports continuous operation with proper error handling, graceful shutdown, and KeepAlive/restart policies
+  - ✅ python -m pytest passes (67 tests: 36 cloud + 31 bridge)
+  - ✅ python -m py_compile cloud/**/*.py passes

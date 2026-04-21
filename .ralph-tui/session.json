@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T04:43:03.055Z",
-  "currentIteration": 26,
+  "updatedAt": "2026-04-21T04:46:12.450Z",
+  "currentIteration": 27,
   "maxIterations": 50,
-  "tasksCompleted": 26,
+  "tasksCompleted": 27,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -173,8 +173,8 @@
       {
         "id": "US-027",
         "title": "M7 生产部署 - 前端部署",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-028",
@@ -444,6 +444,16 @@
       "durationMs": 125870,
       "startedAt": "2026-04-21T04:34:07.565Z",
       "endedAt": "2026-04-21T04:36:13.435Z"
+    },
+    {
+      "iteration": 27,
+      "status": "completed",
+      "taskId": "US-027",
+      "taskTitle": "M7 生产部署 - 前端部署",
+      "taskCompleted": true,
+      "durationMs": 408440,
+      "startedAt": "2026-04-21T04:36:14.613Z",
+      "endedAt": "2026-04-21T04:43:03.053Z"
     }
   ],
   "skippedTaskIds": [],

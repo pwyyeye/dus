@@ -123,6 +123,118 @@ cd ~/projects/project-B
 | Codex | `codex` | 占位（待验证 CLI） |
 | Windsurf | `windsurf` | 占位（待验证 CLI） |
 
+## 部署指南
+
+### 方式一：Git Clone 安装
+
+```bash
+# 1. 克隆代码
+git clone https://github.com/pwyyeye/dus.git
+cd dus/bridge
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 配置
+cp config.yaml.example config.yaml
+# 编辑 config.yaml，填写 machine_id, api_url, api_key
+
+# 4. 运行
+python -m bridge.main
+```
+
+### 方式二：一键安装脚本（推荐）
+
+```bash
+cd ~/projects/my-ai-project
+curl -sLo dus-setup.sh https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.sh
+chmod +x dus-setup.sh
+./dus-setup.sh --auto
+```
+
+---
+
+## macOS 自动启动 (launchd)
+
+将 Bridge 配置为 macOS 系统服务，开机自动启动。
+
+### 1. 创建 plist 文件
+
+```bash
+mkdir -p ~/Library/LaunchAgents
+cp com.dus.bridge.plist ~/Library/LaunchAgents/
+```
+
+### 2. 编辑配置
+
+修改 `com.dus.bridge.plist` 中的路径和参数：
+- `WorkingDirectory`: 项目目录
+- `EnvironmentVariables`: 设置 `PYTHONPATH`
+- `ProgramArguments`: Python 解释器和 bridge 模块路径
+
+### 3. 加载服务
+
+```bash
+# 加载服务（开机自启）
+launchctl load ~/Library/LaunchAgents/com.dus.bridge.plist
+
+# 立即启动
+launchctl start com.dus.bridge
+
+# 查看状态
+launchctl list | grep dus
+
+# 停止服务
+launchctl stop com.dus.bridge
+
+# 卸载服务
+launchctl unload ~/Library/LaunchAgents/com.dus.bridge.plist
+```
+
+---
+
+## Linux 自动启动 (systemd)
+
+将 Bridge 配置为 systemd 用户服务，开机自动启动。
+
+### 1. 创建服务文件
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp dus-bridge.service ~/.config/systemd/user/
+```
+
+### 2. 编辑配置
+
+修改 `dus-bridge.service` 中的路径和参数：
+- `WorkingDirectory`: 项目目录
+- `Environment`: 设置 `PYTHONPATH`
+- `ExecStart`: Python 解释器和 bridge 模块路径
+
+### 3. 启用服务
+
+```bash
+# 重新加载 systemd
+systemctl --user daemon-reload
+
+# 启用服务（开机自启）
+systemctl --user enable dus-bridge
+
+# 立即启动
+systemctl --user start dus-bridge
+
+# 查看状态
+systemctl --user status dus-bridge
+
+# 停止服务
+systemctl --user stop dus-bridge
+
+# 重启服务
+systemctl --user restart dus-bridge
+```
+
+---
+
 ## 日志
 
 Bridge 日志默认输出到 `.dus/bridge.log`：
