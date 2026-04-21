@@ -155,6 +155,20 @@ export async function createTask(data: {
   return res.data;
 }
 
+export async function updateTask(id: string, data: {
+  status?: string;
+}): Promise<Task> {
+  const res = await request<ApiResponse<Task>>(`/tasks/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function cancelTask(id: string): Promise<Task> {
+  return updateTask(id, { status: "cancelled" });
+}
+
 // ── Project API ──
 
 export async function fetchProjects(): Promise<Project[]> {

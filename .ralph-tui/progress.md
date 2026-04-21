@@ -23,6 +23,8 @@ after each iteration and it's included in prompts for context.
 
 - **Base-UI component API differences**: This project uses `@base-ui/react` instead of standard shadcn. Button doesn't have `asChild` prop - use `render` prop or plain `onClick` with router. DialogTrigger uses `render` prop with React element. Select `onValueChange(value: string | null)` passes null when clearing selection, not empty string.
 
+- **Zod v4 + @hookform/resolvers zodResolver compatibility issue**: Zod v4 (4.3.6) has breaking changes in schema internal structure (`_def.typeName` is undefined, uses `_zod` instead). The `@hookform/resolvers/zod` v5.x has type definitions that don't fully account for Zod v4's new schema structure. Workaround: use react-hook-form's native `required` validation or import zod from `zod/v4` explicitly and use `zodResolver(schema, {}, { mode: 'sync' })` with the Zod 4 overload. Alternative: use native HTML5 validation instead of zod resolver.
+
 ---
 
 ## 2026-04-21 - US-013
@@ -355,4 +357,31 @@ after each iteration and it's included in prompts for context.
   - ✅ Polling interval: 10 seconds (`refetchInterval: 10000`) - now added to both queries
   - ✅ pnpm typecheck passes
   - ✅ pnpm lint passes
+
+---
+
+## 2026-04-21 - US-020
+
+- **What was implemented:** Created task list page `/tasks` with status filter tabs, task table with view/cancel actions, and new task dialog
+- **Files changed:**
+  - `frontend/src/app/tasks/page.tsx` (rewritten with full implementation)
+  - `frontend/src/components/task-create-modal.tsx` (updated to use react-hook-form with native validation)
+  - `frontend/src/lib/api.ts` (added `updateTask` and `cancelTask` functions)
+- **Learnings:**
+  - Zod v4 + @hookform/resolvers zodResolver have type compatibility issues - the schema structure changed (`_def.typeName` is undefined in Zod 4). Using react-hook-form's native `required` validation as workaround
+  - The `Dialog.Trigger` in this codebase uses `DialogTrigger` exported component, not `Dialog.Trigger`
+  - Status filter tabs use `Tabs`, `TabsList`, `TabsTrigger` from `@/components/ui/tabs`
+  - Cancel button is only shown for cancellable statuses: `pending`, `dispatched`, `running`
+  - Windsurf tasks (`pending_manual` status) show special message "提醒已发送，请登录手动执行"
+  - 5-second polling is implemented via `refetchInterval: 5000` in useQuery
+- **Acceptance criteria status:**
+  - ✅ Top status filter tabs: All / Pending / Running / Success / Failed (using Tabs component)
+  - ✅ Top-right "+ New Task" floating action button (TaskCreateModal with Button trigger)
+  - ✅ Each row shows: task ID, title, target device, status badge, created time, action buttons (view/cancel)
+  - ✅ Windsurf task special display: "提醒已发送，请登录手动执行" (shown for `pending_manual` status)
+  - ✅ Polling interval: 5 seconds (`refetchInterval: 5000`)
+  - ✅ New task dialog (shadcn Dialog + react-hook-form with native validation)
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes (1 pre-existing warning about `watch()` from react-hook-form)
+  - ⚠️ Browser verification skipped due to browse tool server startup issues
 

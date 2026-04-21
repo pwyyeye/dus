@@ -1,25 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchTasks, fetchMachines, createTask } from "@/lib/api";
+import { fetchTasks, fetchMachines, cancelTask, Task, Machine } from "@/lib/api";
+import { TaskCreateModal } from "@/components/task-create-modal";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
-  CardHeader,
-  CardTitle,
 } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -28,18 +19,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PlusIcon, EyeIcon, XIcon } from "lucide-react";
 
-type BadgeVariant = "default" | "destructive" | "outline" | "secondary";
+type StatusFilter = "all" | "pending" | "running" | "completed" | "failed";
 
-const statusMap: Record<string, { label: string; variant: BadgeVariant }> = {
-  pending: { label: "待处理", variant: "outline" },
-  dispatched: { label: "已分派", variant: "secondary" },
-  running: { label: "运行中", variant: "default" },
-  completed: { label: "已完成", variant: "default" },
-  failed: { label: "失败", variant: "destructive" },
-  cancelled: { label: "已取消", variant: "secondary" },
-  pending_manual: { label: "待手动", variant: "outline" },
-};
+const STATUS_TABS: { value: StatusFilter; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "pending", label: "待处理" },
+  { value: "running", label: "运行中" },
+  { value: "completed", label: "已完成" },
+  { value: "failed", label: "失败" },
+];
 
 function formatTime(iso: string | null) {
   if (!iso) return "-";
@@ -50,15 +41,19 @@ function truncate(str: string, len: number) {
   return str.length > len ? str.slice(0, len) + "..." : str;
 }
 
+function canCancel(status: string): boolean {
+  return ["pending", "dispatched", "running"].includes(status);
+}
+
 export default function TasksPage() {
-  const [open, setOpen] = useState(false);
-  const [instruction, setInstruction] = useState("");
-  const [targetMachineId, setTargetMachineId] = useState("");
+  const router = useRouter();
   const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const { data: tasks, isLoading } = useQuery({
-    queryKey: ["tasks"],
-    queryFn: () => fetchTasks(),
+    queryKey: ["tasks", statusFilter],
+    queryFn: () => fetchTasks(statusFilter === "all" ? undefined : { status: statusFilter }),
+    refetchInterval: 5000,
   });
 
   const { data: machines } = useQuery({
@@ -66,24 +61,26 @@ export default function TasksPage() {
     queryFn: fetchMachines,
   });
 
-  const mutation = useMutation({
-    mutationFn: createTask,
+  const cancelMutation = useMutation({
+    mutationFn: cancelTask,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      setOpen(false);
-      setInstruction("");
-      setTargetMachineId("");
     },
   });
 
-  const onSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!instruction.trim()) return;
-    mutation.mutate({
-      instruction,
-      target_machine_id: targetMachineId || undefined,
-    });
+  const getMachineName = (machineId: string | null): string => {
+    if (!machineId) return "-";
+    const machine = machines?.find((m: Machine) => m.id === machineId);
+    return machine?.machine_name ?? machineId.slice(0, 8);
   };
+
+  const getFilteredTasks = (): Task[] => {
+    if (!tasks) return [];
+    if (statusFilter === "all") return tasks;
+    return tasks.filter((t: Task) => t.status === statusFilter);
+  };
+
+  const filteredTasks = getFilteredTasks();
 
   return (
     <div className="space-y-6">
@@ -92,89 +89,96 @@ export default function TasksPage() {
           <h2 className="text-2xl font-bold tracking-tight">任务管理</h2>
           <p className="text-muted-foreground">查看和管理所有任务</p>
         </div>
-        <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger render={<Button />}>
-            创建任务
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>创建新任务</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="instruction">执行指令</Label>
-                <Textarea
-                  id="instruction"
-                  placeholder="描述 Agent 需要执行的指令..."
-                  rows={5}
-                  value={instruction}
-                  onChange={(e) => setInstruction(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>目标设备</Label>
-                <select
-                  className="flex h-8 w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm"
-                  value={targetMachineId}
-                  onChange={(e) => setTargetMachineId(e.target.value)}
-                >
-                  <option value="">不指定设备</option>
-                  {machines?.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.machine_name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-                  取消
-                </Button>
-                <Button type="submit" disabled={mutation.isPending}>
-                  {mutation.isPending ? "创建中..." : "创建"}
-                </Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        <TaskCreateModal
+          trigger={
+            <Button>
+              <PlusIcon className="size-4 mr-1" />
+              新建任务
+            </Button>
+          }
+        />
       </div>
 
+      <Tabs value={statusFilter} onValueChange={(v) => setStatusFilter(v as StatusFilter)}>
+        <TabsList>
+          {STATUS_TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              {tab.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
+
       <Card>
-        <CardHeader>
-          <CardTitle>任务列表</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">加载中...</p>
-          ) : !tasks?.length ? (
-            <p className="text-sm text-muted-foreground">暂无任务，点击右上角创建</p>
+            <div className="py-8 text-center text-muted-foreground">加载中...</div>
+          ) : filteredTasks.length === 0 ? (
+            <div className="py-8 text-center text-muted-foreground">
+              暂无{statusFilter === "all" ? "" : STATUS_TABS.find((t) => t.value === statusFilter)?.label}任务
+            </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>任务ID</TableHead>
                   <TableHead>指令</TableHead>
+                  <TableHead>目标设备</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead>创建时间</TableHead>
+                  <TableHead>操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tasks.map((t) => {
-                  const st = statusMap[t.status] ?? { label: t.status, variant: "outline" as BadgeVariant };
-                  return (
-                    <TableRow key={t.id}>
-                      <TableCell className="font-mono text-xs">{t.task_id}</TableCell>
-                      <TableCell className="font-medium">{truncate(t.instruction, 50)}</TableCell>
-                      <TableCell>
-                        <Badge variant={st.variant}>{st.label}</Badge>
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {formatTime(t.created_at)}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
+                {filteredTasks.map((task: Task) => (
+                  <TableRow key={task.id}>
+                    <TableCell className="font-mono text-xs">{task.task_id}</TableCell>
+                    <TableCell>
+                      <div className="max-w-[300px]">
+                        {task.status === "pending_manual" ? (
+                          <div>
+                            <p className="text-sm line-clamp-2">{truncate(task.instruction, 50)}</p>
+                            <p className="text-xs text-amber-600 mt-1">
+                              提醒已发送，请登录手动执行
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm line-clamp-2">{truncate(task.instruction, 50)}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-sm">{getMachineName(task.target_machine_id)}</TableCell>
+                    <TableCell>
+                      <StatusBadge status={task.status} />
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {formatTime(task.created_at)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="icon-xs"
+                          variant="ghost"
+                          onClick={() => router.push(`/tasks/${task.id}`)}
+                          title="查看详情"
+                        >
+                          <EyeIcon className="size-3.5" />
+                        </Button>
+                        {canCancel(task.status) && (
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={() => cancelMutation.mutate(task.id)}
+                            disabled={cancelMutation.isPending}
+                            title="取消任务"
+                          >
+                            <XIcon className="size-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
           )}
