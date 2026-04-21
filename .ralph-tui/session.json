@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T04:17:29.645Z",
-  "currentIteration": 20,
+  "updatedAt": "2026-04-21T04:19:36.715Z",
+  "currentIteration": 21,
   "maxIterations": 50,
-  "tasksCompleted": 20,
+  "tasksCompleted": 21,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -137,8 +137,8 @@
       {
         "id": "US-021",
         "title": "M5 Web Dashboard - 任务详情页 `/tasks/:id`",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-022",
@@ -384,6 +384,16 @@
       "durationMs": 426101,
       "startedAt": "2026-04-21T03:37:50.212Z",
       "endedAt": "2026-04-21T03:44:56.313Z"
+    },
+    {
+      "iteration": 21,
+      "status": "completed",
+      "taskId": "US-021",
+      "taskTitle": "M5 Web Dashboard - 任务详情页 `/tasks/:id`",
+      "taskCompleted": true,
+      "durationMs": 1952142,
+      "startedAt": "2026-04-21T03:44:57.501Z",
+      "endedAt": "2026-04-21T04:17:29.643Z"
     }
   ],
   "skippedTaskIds": [],

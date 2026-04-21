@@ -413,3 +413,22 @@ after each iteration and it's included in prompts for context.
   - ✅ pnpm lint passes (1 pre-existing warning in task-create-modal.tsx)
   - ✅ Browser verification passed — task detail page loads correctly with all UI elements (basic info card, execution instruction, execution result with stdout displayed in code block)
 
+---
+
+## 2026-04-21 - US-022
+
+- **What was implemented:** Project status page `/projects` with card-based layout, idle status badges with color coding, and 30-second polling
+- **Files changed:** `frontend/src/app/projects/page.tsx` (rewritten with card grid layout)
+- **Learnings:**
+  - Idle status logic: `normal` (green) when `idle_hours < idle_threshold_hours`, `warning` (yellow) when `idle_hours >= threshold but < 2x threshold`, `overdue` (red) when `idle_hours >= 2x threshold`
+  - `refetchInterval: 30000` sets 30-second polling interval for TanStack Query
+  - Card grid layout using `grid gap-4 sm:grid-cols-2 lg:grid-cols-3` for responsive design
+  - `cn()` utility from `@/lib/utils` combines Tailwind classes conditionally
+- **Acceptance criteria status:**
+  - ✅ Display all project cards (grid layout replacing table)
+  - ✅ Each card shows: project name, project path, last activity time, idle duration, idle status (normal/warning/overdue)
+  - ✅ Idle status color rules: under threshold = green, within 2x threshold = yellow warning, over 2x = red overdue
+  - ✅ Polling interval: 30 seconds (refetchInterval: 30000)
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes (1 pre-existing warning in task-create-modal.tsx)
+
