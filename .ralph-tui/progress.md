@@ -11,6 +11,21 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-04-21 - US-006
+
+- **What was implemented:** Pydantic schema definitions for API request/response validation
+- **Files changed:** `cloud/schemas.py` (already existed - fully implemented)
+- **Learnings:**
+  - US-006 was already fully implemented in a previous iteration
+  - `cloud/schemas.py` contains all required schemas: `MachineCreate`, `MachineResponse`, `MachineUpdateStatus`, `TaskCreate`, `TaskUpdate`, `TaskResponse`, `TaskListResponse`, `ProjectCreate`, `ProjectUpdate`, `ProjectResponse`
+  - All enums defined: `AgentType`, `AgentCapability`, `MachineStatus`, `TaskStatus`, plus `AgentStatus`, `TaskPriority`
+  - Naming convention uses shorter names (e.g., `Create` instead of `CreateRequest`, `Update` instead of `UpdateRequest`) - this is a consistent project convention
+  - `python -m pytest` returns exit code 5 = "no tests collected" (expected at this stage, tests come in US-024)
+  - `python -m py_compile cloud/**/*.py` passes all syntax checks
+  - Schemas properly use `from_attributes = True` for ORM compatibility
+
+---
+
 ## 2026-04-21 - US-005
 
 - **What was implemented:** FastAPI application entry point with API key auth, CORS, health endpoint, and environment variable configuration
