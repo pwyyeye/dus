@@ -337,3 +337,22 @@ after each iteration and it's included in prompts for context.
   - ✅ pnpm typecheck passes
   - ✅ pnpm lint passes
 
+## 2026-04-21 - US-019
+
+- **What was implemented:** Added `refetchInterval: 10000` to machine queries and passed `completedTasksCount` to `DeviceCard` for display in device cards
+- **Files changed:**
+  - `frontend/src/app/devices/page.tsx` (added `refetchInterval: 10000` to both `fetchMachines` and `fetchMachinesDashboard` queries, added `completedTasksCount` prop to `DeviceCard`)
+  - `frontend/src/components/device-card.tsx` (added `completedTasksCount` prop to interface and display in footer)
+- **Learnings:**
+  - US-019 was mostly already implemented - only missing pieces were: (1) `refetchInterval: 10000` on the device queries, (2) `completedTasksCount` display in device cards
+  - The `MachineDashboard` type already had `completed_tasks_count` field but it wasn't being passed to or displayed in the DeviceCard
+  - Device card footer already showed "待处理" and "最后心跳" but was missing "今日完成" count
+- **Acceptance criteria status:**
+  - ✅ Device card dashboard layout (stats cards + recent tasks) - already existed
+  - ✅ Each device card shows: name, online status, availability (enabled/disabled), busy status, running tasks, today's completion count, last heartbeat - now includes `completedTasksCount`
+  - ✅ Click device card to quickly dispatch task (Dialog popup) - already existed
+  - ✅ Click "Enable/Disable" button to manage device availability - already existed
+  - ✅ Polling interval: 10 seconds (`refetchInterval: 10000`) - now added to both queries
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes
+

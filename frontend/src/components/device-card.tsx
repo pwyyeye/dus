@@ -40,10 +40,11 @@ interface DeviceCardProps {
     instruction: string;
     status: string;
   }>;
+  completedTasksCount?: number;
   className?: string;
 }
 
-export function DeviceCard({ machine, runningTasks = [], className }: DeviceCardProps) {
+export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0, className }: DeviceCardProps) {
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const [instruction, setInstruction] = useState("");
   const queryClient = useQueryClient();
@@ -127,6 +128,7 @@ export function DeviceCard({ machine, runningTasks = [], className }: DeviceCard
         )}
 
         <div className="flex items-center justify-between text-xs text-muted-foreground border-t pt-3">
+          <span>今日完成: {completedTasksCount}</span>
           <span>待处理: {machine.pending_task_count ?? 0}</span>
           <span>最后心跳: {formatTime(machine.last_poll_at)}</span>
         </div>

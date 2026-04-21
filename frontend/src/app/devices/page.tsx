@@ -12,11 +12,13 @@ export default function DevicesPage() {
   const { data: machines, isLoading: machinesLoading } = useQuery({
     queryKey: ["machines"],
     queryFn: fetchMachines,
+    refetchInterval: 10000,
   });
 
   const { data: dashboard, isLoading: dashboardLoading } = useQuery({
     queryKey: ["machines-dashboard"],
     queryFn: fetchMachinesDashboard,
+    refetchInterval: 10000,
   });
 
   const isLoading = machinesLoading || dashboardLoading;
@@ -80,6 +82,7 @@ export default function DevicesPage() {
                   key={machine.id}
                   machine={machine}
                   runningTasks={dash?.running_tasks ?? []}
+                  completedTasksCount={dash?.completed_tasks_count ?? 0}
                 />
               );
             })}
