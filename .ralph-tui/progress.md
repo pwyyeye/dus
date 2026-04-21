@@ -7,6 +7,8 @@ after each iteration and it's included in prompts for context.
 
 *Add reusable patterns discovered during development here.*
 
+- **Eager-loading relationships in async SQLAlchemy**: When you need to access a Task's foreign-keyed relationships (target_machine, project) in an async endpoint, use `select(Task).options(joinedload(Task.target_machine), joinedload(Task.project)).where(...)` to eagerly load them in a single query and avoid lazy-loading issues.
+
 - **Alembic initialization with pre-existing database**: Initialize with `alembic init alembic`, configure env.py to import models with `sys.path.insert(0, str(Path(__file__).parent.parent))`, run `alembic revision --autogenerate`, then use `alembic stamp head` to mark existing schema as the baseline (SQLite doesn't support ALTER COLUMN so direct upgrade may fail)
 
 - **Bridge API client implementation pattern**: API client uses `httpx.AsyncClient` with retry logic (`MAX_RETRIES=3`, `RETRY_DELAY=2.0`), timeouts (`connect=5s, read=30s`), and `X-API-Key` header. Cloud endpoints: `POST /machines` (register), `GET /machines/{uuid}/poll` (poll tasks), `PUT /tasks/{uuid}` (update status), `POST /tasks/{uuid}/result` (submit result), `POST /tasks/{uuid}/remind` (trigger reminder). `poll_tasks(project_id=None)` accepts optional project_id to override config value.
@@ -40,6 +42,27 @@ after each iteration and it's included in prompts for context.
   - ✅ Graceful `Ctrl+C` shutdown waiting for running tasks (lines 50-52, 102-106)
   - ✅ python -m pytest passes (exit code 5 = no tests, expected)
   - ✅ python -m py_compile cloud/**/*.py passes
+
+---
+
+## 2026-04-21 - US-015
+
+- **What was implemented:** Enhanced `trigger_reminder` endpoint to call `notifier.send_wechat_markdown()` after updating task status to `pending_manual`
+- **Files changed:** `cloud/routers/tasks.py` (added `joinedload` for target_machine and project relationships, added WeChat notification with task instruction, machine name, project name, project root path, and task link)
+- **Learnings:**
+  - `joinedload(Task.target_machine)` and `joinedload(Task.project)` needed to eagerly load relationships within a single query (without this, accessing `task.project` after the query would fail to load the relationship)
+  - The `Project` model import is not needed when accessing via relationship - SQLAlchemy resolves `task.project` through the relationship defined on the Task model regardless of whether `Project` is imported
+  - `send_wechat_markdown()` is async so it must be awaited in the endpoint
+  - Task link constructed as `{FRONTEND_URL}/tasks/{task.task_id}` using the external task_id string (e.g., "task-a1b2c3d4")
+  - Message format: bold title, then task instruction, machine name, project name, project root, then "完成后请手动标记任务完成" with task link
+- **Acceptance criteria status:**
+  - ✅ Bridge polling `manual_only` device tasks calls `POST /api/v1/tasks/{id}/remind` (already implemented in US-011/US-013)
+  - ✅ Cloud handler updates task status to `pending_manual` (already implemented, confirmed in trigger_reminder line 214)
+  - ✅ Cloud calls `notifier.send_wechat_markdown()` with template including task instruction, machine name, project name, project root path (newly implemented)
+  - ✅ Message includes "完成后请手动标记任务完成" and link to task (newly implemented)
+  - ✅ python -m pytest passes (exit code 5 = no tests, expected)
+  - ✅ python -m py_compile cloud/**/*.py passes
+- **Reusable pattern**: When you need to access both a Task's foreign-keyed relationships (target_machine, project) in an endpoint, use `select(Task).options(joinedload(Task.target_machine), joinedload(Task.project)).where(...)` to avoid lazy-loading issues in async SQLAlchemy.
 
 ---
 

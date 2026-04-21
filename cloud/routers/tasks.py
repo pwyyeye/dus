@@ -3,10 +3,13 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import get_settings
 from database import get_db
 from models import Task, Machine
+from notifier import send_wechat_markdown
 from schemas import (
     TaskCreate,
     TaskUpdate,
@@ -199,13 +202,35 @@ async def task_callback(
 @router.post("/{task_uuid}/remind", response_model=ApiResponse)
 async def trigger_reminder(task_uuid: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Trigger a reminder for manual_only tasks (called by Bridge)."""
-    stmt = select(Task).where(Task.id == task_uuid)
+    stmt = select(Task).options(
+        joinedload(Task.target_machine),
+        joinedload(Task.project),
+    ).where(Task.id == task_uuid)
     result = await db.execute(stmt)
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
     task.status = "pending_manual"
+
+    # Send WeChat notification
+    settings = get_settings()
+    frontend_url = settings.FRONTEND_URL or "http://localhost:3000"
+    task_link = f"{frontend_url}/tasks/{task.task_id}"
+
+    machine_name = task.target_machine.machine_name if task.target_machine else "Unknown"
+    project_name = task.project.project_name if task.project else "Unknown"
+    project_root = task.project.root_path if task.project else "Unknown"
+
+    message_content = (
+        f"**任务指令**: {task.instruction}\n\n"
+        f"**所属机器**: {machine_name}\n"
+        f"**项目名称**: {project_name}\n"
+        f"**项目路径**: {project_root}\n\n"
+        f"完成后请手动标记任务完成: [查看任务]({task_link})"
+    )
+
+    await send_wechat_markdown(title="⚠️ Windsurf 手动任务提醒", content=message_content)
 
     return ApiResponse(
         data=TaskResponse.model_validate(task).model_dump(mode="json"),
