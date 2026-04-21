@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T03:10:12.488Z",
-  "currentIteration": 7,
+  "updatedAt": "2026-04-21T03:12:01.348Z",
+  "currentIteration": 8,
   "maxIterations": 50,
-  "tasksCompleted": 7,
+  "tasksCompleted": 8,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -59,8 +59,8 @@
       {
         "id": "US-008",
         "title": "M2 核心 API - 任务管理 API",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-009",
@@ -254,6 +254,16 @@
       "durationMs": 66660,
       "startedAt": "2026-04-21T03:08:05.299Z",
       "endedAt": "2026-04-21T03:09:11.959Z"
+    },
+    {
+      "iteration": 8,
+      "status": "completed",
+      "taskId": "US-008",
+      "taskTitle": "M2 核心 API - 任务管理 API",
+      "taskCompleted": true,
+      "durationMs": 59353,
+      "startedAt": "2026-04-21T03:09:13.133Z",
+      "endedAt": "2026-04-21T03:10:12.486Z"
     }
   ],
   "skippedTaskIds": [],

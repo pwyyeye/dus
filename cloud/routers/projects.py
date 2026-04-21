@@ -56,10 +56,13 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
     for p in projects:
         resp = ProjectResponse.model_validate(p)
         if p.last_activity_at:
-            delta = now - p.last_activity_at.replace(tzinfo=timezone.utc) if p.last_activity_at.tzinfo is None else now - p.last_activity_at
+            last_act = p.last_activity_at.replace(tzinfo=timezone.utc) if p.last_activity_at.tzinfo is None else p.last_activity_at
+            delta = now - last_act
             resp.idle_hours = round(delta.total_seconds() / 3600, 1)
+            resp.is_exceeding_threshold = resp.idle_hours > p.idle_threshold_hours
         else:
             resp.idle_hours = None
+            resp.is_exceeding_threshold = None
         data.append(resp.model_dump(mode="json"))
 
     return ApiResponse(data=data)

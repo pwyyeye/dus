@@ -206,6 +206,7 @@ class ProjectResponse(BaseModel):
     is_archived: bool
     created_at: datetime
     idle_hours: float | None = None
+    is_exceeding_threshold: bool | None = None
 
     model_config = {"from_attributes": True}
 

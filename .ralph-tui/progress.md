@@ -17,6 +17,20 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-04-21 - US-009
+
+- **What was implemented:** Project Management API - added `is_exceeding_threshold` field to GET /projects response
+- **Files changed:** `cloud/schemas.py` (added `is_exceeding_threshold` to `ProjectResponse`), `cloud/routers/projects.py` (updated GET to compute `is_exceeding_threshold`)
+- **Learnings:**
+  - US-009 was mostly already implemented in a previous iteration
+  - Only missing piece was `is_exceeding_threshold` field in GET response
+  - `is_exceeding_threshold = idle_hours > idle_threshold_hours` when `idle_hours` is not None
+  - All 4 acceptance criteria now met: POST /projects (auto-id), GET /projects (with idle/threshold info), PUT /projects/{id} (archive + threshold), Auto-create project on machine registration
+  - python -m pytest passes (exit code 5 = no tests, expected)
+  - python -m py_compile cloud/**/*.py passes
+
+---
+
 ## 2026-04-21 - US-008
 
 - **What was implemented:** Task Management API endpoints (already fully implemented in previous iteration)
