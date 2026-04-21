@@ -1,4 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "change-me-to-a-strong-random-string-at-least-32-chars";
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {

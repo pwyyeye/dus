@@ -541,3 +541,32 @@ after each iteration and it's included in prompts for context.
 3. Connect the cloud/ directory as a Web Service from GitHub
 4. Set the required environment variables
 5. Trigger deployment and verify
+
+---
+
+## 2026-04-21 - US-027
+
+- **What was implemented:** Created Vercel deployment configuration for frontend
+- **Files changed:** `frontend/vercel.json` (new file)
+- **Learnings:**
+  - Vercel deployment uses `vercel.json` with framework: "nextjs", buildCommand: "pnpm build"
+  - Frontend uses environment variables `NEXT_PUBLIC_API_BASE_URL` (full URL including /api/v1 path) and `NEXT_PUBLIC_API_KEY` for API calls
+  - For production, `NEXT_PUBLIC_API_BASE_URL` should point to the deployed cloud API (e.g., Railway URL from US-026 + "/api/v1")
+  - Build succeeds with `pnpm build` - outputs `.next/` directory with 8 routes (static + 1 dynamic)
+  - Deployment to Vercel is primarily a manual process similar to US-026 (requires Vercel UI/CLI)
+- **Acceptance criteria status:**
+  - ✅ Build with `pnpm build` (outputs `.next/` directory) - Build succeeds
+  - ⚠️ Deploy to hosting platform (Vercel for overseas) - Created vercel.json, requires Vercel UI setup
+  - ⚠️ Configure `NEXT_PUBLIC_API_BASE_URL` and `NEXT_PUBLIC_API_KEY` environment variables - Values depend on deployed cloud URL from US-026
+  - ⚠️ Verify dashboard accessible at public URL - Requires Vercel deployment
+  - ⚠️ Verify API calls work correctly to cloud endpoint - Requires both frontend and cloud deployment
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes (1 pre-existing warning in task-create-modal.tsx)
+
+**Note:** US-027 is primarily a manual deployment task. The vercel.json configuration has been created to enable deployment, but actual deployment requires user interaction with Vercel's web UI/CLI to:
+1. Create a Vercel project at vercel.com or via `vercel` CLI
+2. Connect the frontend/ directory as the project root
+3. Set the environment variables:
+   - `NEXT_PUBLIC_API_BASE_URL` = the Railway cloud URL (from US-026 deployment) + "/api/v1" (e.g., "https://dus-cloud.up.railway.app/api/v1")
+   - `NEXT_PUBLIC_API_KEY` = the same API_KEY used in Railway deployment
+4. Trigger deployment and verify
