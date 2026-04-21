@@ -1,0 +1,192 @@
+{
+  "version": 1,
+  "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
+  "status": "running",
+  "startedAt": "2026-04-21T02:42:49.953Z",
+  "updatedAt": "2026-04-21T02:57:07.957Z",
+  "currentIteration": 0,
+  "maxIterations": 50,
+  "tasksCompleted": 0,
+  "isPaused": false,
+  "agentPlugin": "claude",
+  "trackerState": {
+    "plugin": "json",
+    "prdPath": "./tasks/prd.json",
+    "totalTasks": 28,
+    "tasks": [
+      {
+        "id": "US-001",
+        "title": "技术预研 - Agent CLI 冒烟测试",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-002",
+        "title": "技术预研 - 企业微信 Webhook 联调",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-003",
+        "title": "技术预研 - 开发环境准备",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-004",
+        "title": "M1 云端骨架 - 数据库建表",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-005",
+        "title": "M1 云端骨架 - FastAPI 应用入口",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-006",
+        "title": "M1 云端骨架 - Pydantic Schema 定义",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-007",
+        "title": "M2 核心 API - 设备管理 API",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-008",
+        "title": "M2 核心 API - 任务管理 API",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-009",
+        "title": "M2 核心 API - 项目管理 API",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-010",
+        "title": "M3 设备 Bridge - 目录结构和配置加载",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-011",
+        "title": "M3 设备 Bridge - API 客户端实现",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-012",
+        "title": "M3 设备 Bridge - Agent 执行器实现",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-013",
+        "title": "M3 设备 Bridge - 主轮询循环",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-014",
+        "title": "M4 提醒系统 - 企业微信 Webhook 发送模块",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-015",
+        "title": "M4 提醒系统 - Windsurf 任务提醒",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-016",
+        "title": "M4 提醒系统 - APScheduler 定时提醒",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-017",
+        "title": "M5 Web Dashboard - 项目初始化与基础配置",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-018",
+        "title": "M5 Web Dashboard - App Router 路由结构",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-019",
+        "title": "M5 Web Dashboard - 设备列表页 `/devices`",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-020",
+        "title": "M5 Web Dashboard - 任务列表页 `/tasks`",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-021",
+        "title": "M5 Web Dashboard - 任务详情页 `/tasks/:id`",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-022",
+        "title": "M5 Web Dashboard - 项目状态页 `/projects`",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-023",
+        "title": "M5 Web Dashboard - 状态徽章组件 StatusBadge",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-024",
+        "title": "M6 端到端测试 - 单元测试",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-025",
+        "title": "M6 端到端测试 - 集成测试链路",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-026",
+        "title": "M7 生产部署 - 云端部署到 Railway",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-027",
+        "title": "M7 生产部署 - 前端部署",
+        "status": "open",
+        "completedInSession": false
+      },
+      {
+        "id": "US-028",
+        "title": "M7 生产部署 - Bridge 上线",
+        "status": "open",
+        "completedInSession": false
+      }
+    ]
+  },
+  "iterations": [],
+  "skippedTaskIds": [],
+  "cwd": "/Users/mac/Desktop/DUS",
+  "activeTaskIds": [],
+  "subagentPanelVisible": false
+}
