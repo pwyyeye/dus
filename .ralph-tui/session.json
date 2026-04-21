@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T02:58:46.924Z",
-  "currentIteration": 1,
+  "updatedAt": "2026-04-21T03:02:21.116Z",
+  "currentIteration": 2,
   "maxIterations": 50,
-  "tasksCompleted": 1,
+  "tasksCompleted": 2,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -23,8 +23,8 @@
       {
         "id": "US-002",
         "title": "技术预研 - 企业微信 Webhook 联调",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-003",
@@ -194,10 +194,20 @@
       "durationMs": 224698,
       "startedAt": "2026-04-21T02:53:23.256Z",
       "endedAt": "2026-04-21T02:57:07.954Z"
+    },
+    {
+      "iteration": 2,
+      "status": "completed",
+      "taskId": "US-002",
+      "taskTitle": "技术预研 - 企业微信 Webhook 联调",
+      "taskCompleted": true,
+      "durationMs": 97788,
+      "startedAt": "2026-04-21T02:57:09.135Z",
+      "endedAt": "2026-04-21T02:58:46.923Z"
     }
   ],
   "skippedTaskIds": [],
   "cwd": "/Users/mac/Desktop/DUS",
   "activeTaskIds": [],
-  "subagentPanelVisible": false
+  "subagentPanelVisible": true
 }
