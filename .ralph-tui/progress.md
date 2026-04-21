@@ -17,6 +17,21 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-04-21 - US-008
+
+- **What was implemented:** Task Management API endpoints (already fully implemented in previous iteration)
+- **Files changed:** `cloud/routers/tasks.py` (already existed - all endpoints implemented)
+- **Learnings:**
+  - US-008 was already fully implemented in a previous iteration
+  - All 6 acceptance criteria met: POST /tasks, GET /tasks (list with filters + pagination), GET /tasks/{id}, PUT /tasks/{id}, POST /tasks/{id}/result, POST /tasks/{id}/callback
+  - `task_id` is auto-generated as `task-{uuid[:8]}` format
+  - PUT /tasks/{id} implements status transition validation (allowed transitions only) and records status change timestamps (started_at, completed_at)
+  - POST /tasks/{id}/result and POST /tasks/{id}/callback are nearly identical - both update result/completed_at/status from payload
+  - python -m pytest passes (0 tests = exit code 0, expected)
+  - python -m py_compile cloud/**/*.py passes
+
+---
+
 ## 2026-04-21 - US-007
 
 - **What was implemented:** Machine management API endpoints (already fully implemented in previous iteration)
