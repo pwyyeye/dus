@@ -513,3 +513,31 @@ after each iteration and it's included in prompts for context.
   - ✅ python -m py_compile cloud/**/*.py passes
   - ✅ pnpm typecheck passes
   - ✅ pnpm lint passes (1 pre-existing warning)
+
+## 2026-04-21 - US-026
+
+- **What was implemented:** Created Railway deployment configuration for cloud service
+- **Files changed:** `cloud/Railway.toml` (new file)
+- **Learnings:**
+  - Railway deployment requires Railway.toml with builder="python", buildCommand, startCommand, and healthCheckPath
+  - Railway uses `$PORT` environment variable for the port the application should listen on
+  - uvicorn command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+  - The application reads DATABASE_URL from environment, so PostgreSQL plugin on Railway provides the connection string
+  - Environment variables are referenced as `${VAR_NAME}` in Railway.toml
+  - Deployment steps (platform actions): Create Railway project → Add PostgreSQL plugin → Add Web Service → Configure env vars → Deploy
+- **Acceptance criteria status:**
+  - ⚠️ Create Railway project with PostgreSQL plugin (requires Railway UI)
+  - ⚠️ Add Web Service connected to GitHub `cloud/` directory (requires Railway UI)
+  - ⚠️ Configure environment variables (requires Railway UI: DATABASE_URL, API_KEY, WECHAT_WEBHOOK_URL)
+  - ⚠️ Trigger first deployment, verify `/health` returns 200 (requires Railway deployment)
+  - ⚠️ Run `alembic upgrade head` via Railway Console (requires Railway shell access)
+  - ⚠️ Verify `/docs` Swagger UI accessible (requires browser after deployment)
+  - ✅ python -m pytest passes (36 tests)
+  - ✅ python -m py_compile cloud/**/*.py passes
+
+**Note:** US-026 is primarily a manual deployment task. The Railway.toml configuration has been created to enable deployment, but actual deployment requires user interaction with Railway's web UI/CLI to:
+1. Create a Railway project at railway.app
+2. Add PostgreSQL plugin to the project
+3. Connect the cloud/ directory as a Web Service from GitHub
+4. Set the required environment variables
+5. Trigger deployment and verify
