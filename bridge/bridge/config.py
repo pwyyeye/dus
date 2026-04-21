@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import sys
 from dataclasses import dataclass, field
@@ -68,10 +70,11 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
     if os.getenv("DUS_MACHINE_ID"):
         cfg.machine.machine_id = os.getenv("DUS_MACHINE_ID")
 
-    # Validate
+    # Validate required fields
     for field_name, value in [
         ("machine.machine_id", cfg.machine.machine_id),
         ("cloud.api_key", cfg.cloud.api_key),
+        ("cloud.api_url", cfg.cloud.api_url),
     ]:
         if value == "CHANGE_ME":
             print(f"ERROR: Please set '{field_name}' in config.yaml (currently 'CHANGE_ME')")

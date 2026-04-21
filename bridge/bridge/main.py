@@ -104,6 +104,22 @@ async def async_main():
     config = load_config()
     setup_logger(config.logging.level)
 
+    # Print config summary on startup
+    print("=" * 50)
+    print("Bridge Configuration Summary")
+    print("=" * 50)
+    print(f"Machine ID:     {config.machine.machine_id}")
+    print(f"Machine Name:   {config.machine.machine_name}")
+    print(f"Agent Type:     {config.machine.agent_type}")
+    print(f"Capability:     {config.machine.agent_capability}")
+    print(f"Project ID:     {config.machine.project_id or '(none)'}")
+    print(f"Cloud API URL:  {config.cloud.api_url}")
+    print(f"Poll Interval:  {config.cloud.poll_interval}s")
+    print(f"Agent Path:     {config.agent.path}")
+    print(f"Timeout:        {config.agent.timeout}s")
+    print(f"Log Level:      {config.logging.level}")
+    print("=" * 50)
+
     bridge = Bridge(config)
 
     loop = asyncio.get_running_loop()

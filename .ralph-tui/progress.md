@@ -17,6 +17,20 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-04-21 - US-010
+
+- **What was implemented:** Bridge directory structure with config loading - fixed validation to include `api_url` and added config summary print on startup
+- **Files changed:** `bridge/bridge/config.py` (added api_url to validation), `bridge/bridge/main.py` (added config summary print)
+- **Learnings:**
+  - US-010 was mostly already implemented in a previous iteration
+  - Only missing pieces were: (1) `api_url` validation against "CHANGE_ME", (2) config summary print on startup
+  - Bridge module structure was already complete with all required files: `__init__.py`, `main.py`, `config.py`, `api_client.py`, `executor.py`, `logger.py`
+  - python -m pytest passes (exit code 5 = no tests, expected)
+  - python -m py_compile cloud/**/*.py passes
+  - python -m py_compile bridge/bridge/*.py passes
+
+---
+
 ## 2026-04-21 - US-009
 
 - **What was implemented:** Project Management API - added `is_exceeding_threshold` field to GET /projects response
