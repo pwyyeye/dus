@@ -161,6 +161,25 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-04-21 - US-012
+
+- **What was implemented:** Agent executor - already fully implemented in a previous iteration
+- **Files changed:** `bridge/bridge/executor.py` (already existed - all functionality implemented)
+- **Learnings:**
+  - US-012 was already fully implemented in a previous iteration
+  - `AgentExecutor` base class with `execute(instruction, workdir)` method exists
+  - `ClaudeCodeExecutor` uses `claude --print` mode with async subprocess execution
+  - `StubExecutor` provides fallback for unverified agent CLIs
+  - `get_executor()` factory pattern for selecting executor by agent_type
+  - Timeout handling: `asyncio.wait_for` with proc.kill() on timeout, returns `error_type="timeout"`
+  - Return format: `{"exit_code", "stdout", "stderr", "error_type"}` matches acceptance criteria
+  - `workdir` parameter is passed to executor; directory creation is caller's responsibility
+  - python -m pytest returns exit code 5 (no tests) - expected at this stage
+  - python -m py_compile bridge/bridge/*.py passes
+  - python -m py_compile cloud/**/*.py passes
+
+---
+
 ## 2026-04-21 - US-011
 
 - **What was implemented:** Bridge API client - fixed `poll_tasks()` to accept optional `project_id` parameter, renamed `trigger_reminder()` to `send_reminder()` to match acceptance criteria, updated `main.py` to use `send_reminder()`
