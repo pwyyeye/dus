@@ -31,6 +31,8 @@ after each iteration and it's included in prompts for context.
 
 - **Mocking httpx for API client tests**: Replace `client._client.request` with an `AsyncMock` to control HTTP response behavior. This avoids patching at a lower level and gives precise control over success/failure scenarios.
 
+- **Integration test fixture setup for async SQLAlchemy**: When creating integration test fixtures that use in-memory SQLite with async SQLAlchemy, you must explicitly import models (`import models`) after creating the engine and before calling `Base.metadata.create_all()`. The models are registered with `Base.metadata` only when `models.py` is imported. Without this, `create_all()` creates an empty database with no tables.
+
 ---
 
 ## 2026-04-21 - US-013
@@ -488,3 +490,26 @@ after each iteration and it's included in prompts for context.
   - ✅ python -m pytest passes (56 tests total: 25 cloud + 31 bridge)
   - ✅ python -m py_compile cloud/**/*.py passes
   - ✅ python -m py_compile bridge/bridge/*.py passes
+
+## 2026-04-21 - US-025
+
+- **What was implemented:** Integration tests for Cloud + Bridge e2e workflows (Chain A, B, C)
+- **Files changed:**
+  - `cloud/tests/test_integration.py` (new - 11 integration tests)
+- **Learnings:**
+  - Chain A (Remote Execution): Tests full task lifecycle - create task → poll (dispatched) → update status (running) → submit result (completed)
+  - Chain B (Windsurf Reminder): Tests manual_only device flow - register machine → create task → trigger reminder → pending_manual + WeChat notification
+  - Chain C (Timeout Handling): Tests timeout error flow - create task → execute → timeout result → task marked failed with error_type="timeout"
+  - Integration tests use same httpx.AsyncClient + pytest-asyncio pattern as unit tests
+  - WeChat notification mocked with `unittest.mock.patch` + `AsyncMock` to avoid actual HTTP calls
+  - Mock call args accessed via `call_kwargs` (not positional args) when function uses keyword arguments
+  - Chain D (Web Dashboard) requires browser automation (Playwright) not currently set up in this project
+- **Acceptance criteria status:**
+  - ✅ Chain A (Remote Execution): Full task lifecycle tested via API simulation
+  - ✅ Chain B (Windsurf Reminder): manual_only flow + WeChat notification tested
+  - ✅ Chain C (Timeout Handling): timeout error_type returned → task marked failed tested
+  - ⚠️ Chain D (Web Dashboard): Requires browser testing framework (Playwright) not installed
+  - ✅ python -m pytest passes (67 tests total: 36 cloud + 31 bridge)
+  - ✅ python -m py_compile cloud/**/*.py passes
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes (1 pre-existing warning)

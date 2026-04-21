@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T04:28:39.433Z",
-  "currentIteration": 23,
+  "updatedAt": "2026-04-21T04:34:06.373Z",
+  "currentIteration": 24,
   "maxIterations": 50,
-  "tasksCompleted": 23,
+  "tasksCompleted": 24,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -155,8 +155,8 @@
       {
         "id": "US-024",
         "title": "M6 端到端测试 - 单元测试",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-025",
@@ -414,6 +414,16 @@
       "durationMs": 80310,
       "startedAt": "2026-04-21T04:19:37.900Z",
       "endedAt": "2026-04-21T04:20:58.210Z"
+    },
+    {
+      "iteration": 24,
+      "status": "completed",
+      "taskId": "US-024",
+      "taskTitle": "M6 端到端测试 - 单元测试",
+      "taskCompleted": true,
+      "durationMs": 460026,
+      "startedAt": "2026-04-21T04:20:59.404Z",
+      "endedAt": "2026-04-21T04:28:39.430Z"
     }
   ],
   "skippedTaskIds": [],
