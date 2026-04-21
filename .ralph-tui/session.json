@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T02:57:07.957Z",
-  "currentIteration": 0,
+  "updatedAt": "2026-04-21T02:58:46.924Z",
+  "currentIteration": 1,
   "maxIterations": 50,
-  "tasksCompleted": 0,
+  "tasksCompleted": 1,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -17,8 +17,8 @@
       {
         "id": "US-001",
         "title": "技术预研 - Agent CLI 冒烟测试",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-002",
@@ -184,7 +184,18 @@
       }
     ]
   },
-  "iterations": [],
+  "iterations": [
+    {
+      "iteration": 1,
+      "status": "completed",
+      "taskId": "US-001",
+      "taskTitle": "技术预研 - Agent CLI 冒烟测试",
+      "taskCompleted": true,
+      "durationMs": 224698,
+      "startedAt": "2026-04-21T02:53:23.256Z",
+      "endedAt": "2026-04-21T02:57:07.954Z"
+    }
+  ],
   "skippedTaskIds": [],
   "cwd": "/Users/mac/Desktop/DUS",
   "activeTaskIds": [],
