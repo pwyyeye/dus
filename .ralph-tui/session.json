@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T03:08:04.105Z",
-  "currentIteration": 5,
+  "updatedAt": "2026-04-21T03:09:11.960Z",
+  "currentIteration": 6,
   "maxIterations": 50,
-  "tasksCompleted": 5,
+  "tasksCompleted": 6,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -47,8 +47,8 @@
       {
         "id": "US-006",
         "title": "M1 云端骨架 - Pydantic Schema 定义",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-007",
@@ -234,6 +234,16 @@
       "durationMs": 74992,
       "startedAt": "2026-04-21T03:05:36.233Z",
       "endedAt": "2026-04-21T03:06:51.225Z"
+    },
+    {
+      "iteration": 6,
+      "status": "completed",
+      "taskId": "US-006",
+      "taskTitle": "M1 云端骨架 - Pydantic Schema 定义",
+      "taskCompleted": true,
+      "durationMs": 71669,
+      "startedAt": "2026-04-21T03:06:52.434Z",
+      "endedAt": "2026-04-21T03:08:04.103Z"
     }
   ],
   "skippedTaskIds": [],

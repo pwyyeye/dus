@@ -9,6 +9,28 @@ after each iteration and it's included in prompts for context.
 
 - **Alembic initialization with pre-existing database**: Initialize with `alembic init alembic`, configure env.py to import models with `sys.path.insert(0, str(Path(__file__).parent.parent))`, run `alembic revision --autogenerate`, then use `alembic stamp head` to mark existing schema as the baseline (SQLite doesn't support ALTER COLUMN so direct upgrade may fail)
 
+- **API Router versioning pattern**: Routes registered under `/api/v1` prefix in main.py, each router has `prefix="/machines"` and uses `response_model=ApiResponse` wrapper for consistent JSON envelope. Auth via `Security(verify_api_key)` dependency at router level.
+
+- **Two-schema pattern for list vs detail**: `MachineListResponse` (shorter, for list views) vs `MachineResponse` (includes pending_task_count, set manually after query). `PollTaskResponse` used for poll results with `agent_capability` field added.
+
+- **Poll endpoint pattern**: Updates `last_poll_at` and sets status=`online` on every poll. Filters tasks by `target_machine_id` and `status=pending`, optionally filters by `project_id` string (looked up to UUID). Batch-updates matched tasks to `dispatched` in memory without explicit flush (relies on get_db commit).
+
+---
+
+## 2026-04-21 - US-007
+
+- **What was implemented:** Machine management API endpoints (already fully implemented in previous iteration)
+- **Files changed:** `cloud/routers/machines.py` (already existed - all endpoints implemented)
+- **Learnings:**
+  - US-007 was already fully implemented in a previous iteration
+  - All 6 acceptance criteria met: POST /machines, GET /machines (list), GET /machines/dashboard, GET /machines/{id}, PATCH /machines/{id}, GET /machines/{id}/poll
+  - `machine_id` is the unique external identifier (machine_id string), `id` is the internal UUID primary key
+  - Poll endpoint filters by `project_id` string (not UUID), looks up project by project_id to get UUID for filtering
+  - `poll_tasks` updates `last_poll_at` and changes status to `online` on each poll
+  - Dashboard returns running/dispatched tasks (limit 5) and today's completed count per machine
+  - python -m pytest returns exit code 5 (no tests) - expected per US-024
+  - python -m py_compile cloud/**/*.py passes
+
 ---
 
 ## 2026-04-21 - US-006
