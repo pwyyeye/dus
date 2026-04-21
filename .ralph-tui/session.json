@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T04:20:58.211Z",
-  "currentIteration": 22,
+  "updatedAt": "2026-04-21T04:28:39.433Z",
+  "currentIteration": 23,
   "maxIterations": 50,
-  "tasksCompleted": 22,
+  "tasksCompleted": 23,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -149,8 +149,8 @@
       {
         "id": "US-023",
         "title": "M5 Web Dashboard - 状态徽章组件 StatusBadge",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-024",
@@ -404,6 +404,16 @@
       "durationMs": 125888,
       "startedAt": "2026-04-21T04:17:30.825Z",
       "endedAt": "2026-04-21T04:19:36.713Z"
+    },
+    {
+      "iteration": 23,
+      "status": "completed",
+      "taskId": "US-023",
+      "taskTitle": "M5 Web Dashboard - 状态徽章组件 StatusBadge",
+      "taskCompleted": true,
+      "durationMs": 80310,
+      "startedAt": "2026-04-21T04:19:37.900Z",
+      "endedAt": "2026-04-21T04:20:58.210Z"
     }
   ],
   "skippedTaskIds": [],

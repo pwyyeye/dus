@@ -25,6 +25,12 @@ after each iteration and it's included in prompts for context.
 
 - **Zod v4 + @hookform/resolvers zodResolver compatibility issue**: Zod v4 (4.3.6) has breaking changes in schema internal structure (`_def.typeName` is undefined, uses `_zod` instead). The `@hookform/resolvers/zod` v5.x has type definitions that don't fully account for Zod v4's new schema structure. Workaround: use react-hook-form's native `required` validation or import zod from `zod/v4` explicitly and use `zodResolver(schema, {}, { mode: 'sync' })` with the Zod 4 overload. Alternative: use native HTML5 validation instead of zod resolver.
 
+- **FastAPI async test pattern with httpx.AsyncClient**: Use `httpx.ASGITransport(app=app)` to test FastAPI directly without running a server. Override dependencies with `app.dependency_overrides[get_db]`. Use `sqlite+aiosqlite:///:memory:` for in-memory test database.
+
+- **Mocking asyncio subprocess for executor tests**: Use `unittest.mock.patch("asyncio.create_subprocess_exec", return_value=mock_proc)` where `mock_proc` is an `AsyncMock` with `communicate` set to return values or raise exceptions. For timeout tests: use `side_effect=[asyncio.TimeoutError, (b"", b"")]` - first call raises timeout, second (after kill) returns normally.
+
+- **Mocking httpx for API client tests**: Replace `client._client.request` with an `AsyncMock` to control HTTP response behavior. This avoids patching at a lower level and gives precise control over success/failure scenarios.
+
 ---
 
 ## 2026-04-21 - US-013
@@ -452,3 +458,33 @@ after each iteration and it's included in prompts for context.
   - ✅ pnpm lint passes (1 pre-existing warning in task-create-modal.tsx)
   - ✅ Browser verification: Frontend dev server serves pages correctly
 
+---
+
+## 2026-04-21 - US-024
+
+- **What was implemented:** Unit tests for cloud API and bridge components
+- **Files changed:**
+  - `cloud/tests/__init__.py` (new)
+  - `cloud/tests/conftest.py` (new)
+  - `cloud/tests/test_api.py` (new - 25 tests)
+  - `bridge/tests/__init__.py` (new)
+  - `bridge/tests/conftest.py` (new)
+  - `bridge/tests/test_executor.py` (new - 11 tests)
+  - `bridge/tests/test_api_client.py` (new - 20 tests)
+- **Learnings:**
+  - Cloud API tests use `httpx.AsyncClient` with `ASGITransport` to test FastAPI endpoints directly
+  - Use `app.dependency_overrides[get_db]` to inject test database session into FastAPI endpoints
+  - Test database uses in-memory SQLite: `sqlite+aiosqlite:///:memory:`
+  - Bridge executor tests mock `asyncio.create_subprocess_exec` directly with `patch()`
+  - For timeout tests: mock `proc.communicate` with `side_effect=[asyncio.TimeoutError, (b"", b"")]` - first call raises timeout, second (after kill) returns normally
+  - For FileNotFoundError tests: use `side_effect=FileNotFoundError("message")` directly on the patch
+  - Bridge API client tests mock `client._client.request` to control HTTP response behavior
+  - `MAX_RETRIES=3` means up to 3 request attempts before returning None
+  - HTTPStatusError does NOT trigger retry (only ConnectError, ReadTimeout, ConnectTimeout)
+- **Acceptance criteria status:**
+  - ✅ `cloud/tests/test_api.py` uses `httpx.AsyncClient` + `pytest-asyncio` to test all API endpoints
+  - ✅ `bridge/tests/test_executor.py` mocks subprocess, tests ClaudeCodeExecutor return structure
+  - ✅ `bridge/tests/test_api_client.py` mocks HTTP responses, tests retry logic
+  - ✅ python -m pytest passes (56 tests total: 25 cloud + 31 bridge)
+  - ✅ python -m py_compile cloud/**/*.py passes
+  - ✅ python -m py_compile bridge/bridge/*.py passes
