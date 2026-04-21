@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T03:28:43.201Z",
-  "currentIteration": 16,
+  "updatedAt": "2026-04-21T03:34:46.872Z",
+  "currentIteration": 17,
   "maxIterations": 50,
-  "tasksCompleted": 16,
+  "tasksCompleted": 17,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -113,8 +113,8 @@
       {
         "id": "US-017",
         "title": "M5 Web Dashboard - 项目初始化与基础配置",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-018",
@@ -344,6 +344,16 @@
       "durationMs": 136526,
       "startedAt": "2026-04-21T03:24:40.125Z",
       "endedAt": "2026-04-21T03:26:56.651Z"
+    },
+    {
+      "iteration": 17,
+      "status": "completed",
+      "taskId": "US-017",
+      "taskTitle": "M5 Web Dashboard - 项目初始化与基础配置",
+      "taskCompleted": true,
+      "durationMs": 105341,
+      "startedAt": "2026-04-21T03:26:57.859Z",
+      "endedAt": "2026-04-21T03:28:43.200Z"
     }
   ],
   "skippedTaskIds": [],

@@ -21,6 +21,8 @@ after each iteration and it's included in prompts for context.
 
 - **Graceful async shutdown pattern**: Track asyncio tasks in a list, add done_callbacks to remove completed tasks, and use `asyncio.gather(*tasks, return_exceptions=True)` in cleanup to wait for running tasks before exiting.
 
+- **Base-UI component API differences**: This project uses `@base-ui/react` instead of standard shadcn. Button doesn't have `asChild` prop - use `render` prop or plain `onClick` with router. DialogTrigger uses `render` prop with React element. Select `onValueChange(value: string | null)` passes null when clearing selection, not empty string.
+
 ---
 
 ## 2026-04-21 - US-013
@@ -305,4 +307,33 @@ after each iteration and it's included in prompts for context.
   - Cloud endpoint is `POST /tasks/{task_uuid}/remind` (uses internal UUID, not task_id string)
   - python -m pytest returns exit code 5 (no tests) - expected at this stage
   - python -m py_compile bridge/bridge/*.py passes
+
+---
+
+## 2026-04-21 - US-018
+
+- **What was implemented:** Created App Router structure for M5 Web Dashboard
+- **Files changed:**
+  - `frontend/src/app/page.tsx` (redirects to /tasks)
+  - `frontend/src/lib/store.ts` (new - Zustand store with UIState and TaskFiltersState)
+  - `frontend/src/components/device-card.tsx` (new - reusable device card with task dispatch)
+  - `frontend/src/components/task-card.tsx` (new - reusable task card)
+  - `frontend/src/components/status-badge.tsx` (new - reusable status badge for tasks/machines/projects)
+  - `frontend/src/components/task-create-modal.tsx` (new - reusable task creation modal)
+  - `frontend/src/app/devices/page.tsx` (new - devices overview page)
+  - `frontend/src/app/tasks/[id]/page.tsx` (new - task detail page)
+- **Learnings:**
+  - This project uses `@base-ui/react` instead of standard shadcn/ui - Button doesn't support `asChild`, use plain `onClick` with `useRouter` instead
+  - DialogTrigger `render` prop expects ReactElement or ComponentRenderFn, not plain children
+  - Select `onValueChange` receives `(value: string | null)` - null when cleared, empty string when "no value" option selected
+  - Zustand `create` export works directly without generic inference issues in this version
+- **Acceptance criteria status:**
+  - ✅ `app/page.tsx` redirects to `/tasks`
+  - ✅ `app/layout.tsx` root layout with global Provider injection (already existed)
+  - ✅ Create `app/lib/` with `api.ts`, `utils.ts`, `store.ts` (store.ts newly created)
+  - ✅ Create `app/components/ui/` with shadcn components (already existed)
+  - ✅ Create `app/components/device-card.tsx`, `task-card.tsx`, `status-badge.tsx`, `task-create-modal.tsx`
+  - ✅ Create route pages: `/devices/page.tsx`, `/tasks/page.tsx`, `/tasks/[id]/page.tsx`, `/projects/page.tsx` (devices and tasks/[id] newly created)
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes
 
