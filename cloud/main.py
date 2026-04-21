@@ -16,8 +16,13 @@ async def lifespan(app: FastAPI):
     from database import engine, Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Start the reminder scheduler
+    from scheduler import start_scheduler
+    start_scheduler()
     yield
-    # Shutdown
+    # Shutdown scheduler and engine
+    from scheduler import stop_scheduler
+    stop_scheduler()
     await engine.dispose()
 
 

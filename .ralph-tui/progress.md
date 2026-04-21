@@ -64,6 +64,33 @@ after each iteration and it's included in prompts for context.
   - ✅ python -m py_compile cloud/**/*.py passes
 - **Reusable pattern**: When you need to access both a Task's foreign-keyed relationships (target_machine, project) in an endpoint, use `select(Task).options(joinedload(Task.target_machine), joinedload(Task.project)).where(...)` to avoid lazy-loading issues in async SQLAlchemy.
 
+- **APScheduler integration with FastAPI lifespan**: Use `AsyncIOScheduler` with `start_scheduler()` called in startup and `stop_scheduler()` called in shutdown. Pass the scheduler instance to lifespan via module-level `_scheduler` variable.
+
+- **APScheduler async job pattern**: APScheduler jobs that need async database access should be standalone async functions that create their own `async_session()` context, not rely on FastAPI's dependency injection.
+
+---
+
+## 2026-04-21 - US-016
+
+- **What was implemented:** Created `cloud/scheduler.py` with APScheduler for stalled project detection and timed-out task handling. Integrated scheduler startup/shutdown with FastAPI lifespan in `main.py`.
+- **Files changed:** `cloud/scheduler.py` (new file), `cloud/main.py` (added scheduler lifecycle)
+- **Learnings:**
+  - APScheduler `AsyncIOScheduler` is used with `IntervalTrigger(hours=1)` and `IntervalTrigger(minutes=5)` for periodic jobs
+  - Jobs are async functions that manage their own database sessions (`async with async_session() as db`)
+  - Project stalled check: `idle_hours > project.idle_threshold_hours` using calculated `idle_hours = (now - last_activity_at).total_seconds() / 3600`
+  - Task timeout check: `elapsed > timeout_seconds` using `elapsed = (now - started_at).total_seconds()`
+  - Deduplication: `last_reminder_at` stored in `task.result["last_reminder_at"]` (for tasks) or `project.result["last_reminder_at"]` (for projects)
+  - Reminder interval check: `hours_since_reminder < reminder_interval_hours` before sending
+  - Task timeout marks task as `failed` with `error_type="timeout"` and `exit_code=-1`
+  - `datetime.fromisoformat()` for parsing stored ISO timestamps
+- **Acceptance criteria status:**
+  - ✅ Create `cloud/scheduler.py` with APScheduler
+  - ✅ Project stall check: run every 1 hour, query for unarchived projects where idle_hours > threshold, send WeChat reminder
+  - ✅ Task timeout check: run every 5 minutes, query running tasks where elapsed > timeout_seconds, send timeout reminder and mark failed
+  - ✅ Deduplication: record last reminder time in task.result, don't repeat if within reminder_interval_hours
+  - ✅ python -m pytest passes (exit code 5 = no tests, expected)
+  - ✅ python -m py_compile cloud/**/*.py passes
+
 ---
 
 ## 2026-04-21 - US-014
