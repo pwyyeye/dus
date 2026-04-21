@@ -1,8 +1,8 @@
 {
   "id": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
-  "status": "running",
+  "status": "completed",
   "startedAt": "2026-04-21T02:42:49.415Z",
-  "updatedAt": "2026-04-21T04:46:12.628Z",
+  "updatedAt": "2026-04-21T04:48:50.559Z",
   "agentPlugin": "claude",
   "trackerPlugin": "json",
   "prdPath": "./tasks/prd.json",
@@ -10,5 +10,6 @@
   "maxIterations": 50,
   "totalTasks": 0,
   "tasksCompleted": 28,
-  "cwd": "/Users/mac/Desktop/DUS"
+  "cwd": "/Users/mac/Desktop/DUS",
+  "endedAt": "2026-04-21T04:48:50.559Z"
 }
