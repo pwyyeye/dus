@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T03:19:44.174Z",
-  "currentIteration": 12,
+  "updatedAt": "2026-04-21T03:22:00.406Z",
+  "currentIteration": 13,
   "maxIterations": 50,
-  "tasksCompleted": 12,
+  "tasksCompleted": 13,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -89,8 +89,8 @@
       {
         "id": "US-013",
         "title": "M3 设备 Bridge - 主轮询循环",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-014",
@@ -304,6 +304,16 @@
       "durationMs": 107376,
       "startedAt": "2026-04-21T03:15:31.832Z",
       "endedAt": "2026-04-21T03:17:19.208Z"
+    },
+    {
+      "iteration": 13,
+      "status": "completed",
+      "taskId": "US-013",
+      "taskTitle": "M3 设备 Bridge - 主轮询循环",
+      "taskCompleted": true,
+      "durationMs": 143787,
+      "startedAt": "2026-04-21T03:17:20.384Z",
+      "endedAt": "2026-04-21T03:19:44.171Z"
     }
   ],
   "skippedTaskIds": [],
