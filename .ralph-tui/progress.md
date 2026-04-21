@@ -432,3 +432,23 @@ after each iteration and it's included in prompts for context.
   - ✅ pnpm typecheck passes
   - ✅ pnpm lint passes (1 pre-existing warning in task-create-modal.tsx)
 
+---
+
+## 2026-04-21 - US-023
+
+- **What was implemented:** StatusBadge component was already created in US-018 - verified all acceptance criteria are met
+- **Files changed:** None (already existed at `frontend/src/components/status-badge.tsx`)
+- **Learnings:**
+  - US-023 was already fully implemented in US-018
+  - StatusBadge has all 9 required variants: pending, dispatched, running, completed, failed, cancelled, pending_manual, online, offline
+  - Each variant has correct color scheme (via shadcn Badge variant) and Chinese label
+  - Component is reusable and actively used in task-card.tsx, tasks/page.tsx, and tasks/[id]/page.tsx
+- **Acceptance criteria status:**
+  - ✅ Create `components/status-badge.tsx` with shadcn Badge (exists at `frontend/src/components/status-badge.tsx`)
+  - ✅ Define variants for: pending, dispatched, running, completed, failed, cancelled, pending_manual, online, offline
+  - ✅ Each variant has correct color scheme and Chinese label
+  - ✅ Component is reusable across all pages (used in 3 components/pages)
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes (1 pre-existing warning in task-create-modal.tsx)
+  - ✅ Browser verification: Frontend dev server serves pages correctly
+
