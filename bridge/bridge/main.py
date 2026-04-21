@@ -76,7 +76,7 @@ class Bridge:
 
         if capability == "manual_only":
             logger.info(f"Task {task_name}: manual_only → triggering reminder")
-            await self.api.trigger_reminder(task_id)
+            await self.api.send_reminder(task_id)
             return
 
         # Remote execution

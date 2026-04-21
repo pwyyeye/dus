@@ -66,15 +66,17 @@ class ApiClient:
         logger.error("Failed to register machine")
         return False
 
-    async def poll_tasks(self) -> list[dict]:
+    async def poll_tasks(self, project_id: str | None = None) -> list[dict]:
         """Poll for pending tasks for this machine's project."""
         if not self.machine_uuid:
             logger.warning("Machine not registered, skipping poll")
             return []
 
         path = f"/machines/{self.machine_uuid}/poll"
-        if self.machine_config.project_id:
-            path = f"{path}?project_id={self.machine_config.project_id}"
+        # project_id parameter overrides config; None uses config value
+        effective_project_id = project_id if project_id is not None else self.machine_config.project_id
+        if effective_project_id:
+            path = f"{path}?project_id={effective_project_id}"
 
         result = await self._request("GET", path)
         if result and "tasks" in result:
@@ -94,7 +96,7 @@ class ApiClient:
         result = await self._request("POST", f"/tasks/{task_id}/result", json=result_data)
         return bool(result and result.get("success"))
 
-    async def trigger_reminder(self, task_id: str) -> bool:
+    async def send_reminder(self, task_id: str) -> bool:
         """Trigger reminder for manual_only tasks."""
         result = await self._request("POST", f"/tasks/{task_id}/remind")
         return bool(result and result.get("success"))

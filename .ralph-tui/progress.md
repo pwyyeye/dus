@@ -9,6 +9,8 @@ after each iteration and it's included in prompts for context.
 
 - **Alembic initialization with pre-existing database**: Initialize with `alembic init alembic`, configure env.py to import models with `sys.path.insert(0, str(Path(__file__).parent.parent))`, run `alembic revision --autogenerate`, then use `alembic stamp head` to mark existing schema as the baseline (SQLite doesn't support ALTER COLUMN so direct upgrade may fail)
 
+- **Bridge API client implementation pattern**: API client uses `httpx.AsyncClient` with retry logic (`MAX_RETRIES=3`, `RETRY_DELAY=2.0`), timeouts (`connect=5s, read=30s`), and `X-API-Key` header. Cloud endpoints: `POST /machines` (register), `GET /machines/{uuid}/poll` (poll tasks), `PUT /tasks/{uuid}` (update status), `POST /tasks/{uuid}/result` (submit result), `POST /tasks/{uuid}/remind` (trigger reminder). `poll_tasks(project_id=None)` accepts optional project_id to override config value.
+
 - **API Router versioning pattern**: Routes registered under `/api/v1` prefix in main.py, each router has `prefix="/machines"` and uses `response_model=ApiResponse` wrapper for consistent JSON envelope. Auth via `Security(verify_api_key)` dependency at router level.
 
 - **Two-schema pattern for list vs detail**: `MachineListResponse` (shorter, for list views) vs `MachineResponse` (includes pending_task_count, set manually after query). `PollTaskResponse` used for poll results with `agent_capability` field added.
@@ -156,4 +158,17 @@ after each iteration and it's included in prompts for context.
   - `alembic init alembic` creates the migration directory structure; script_location in alembic.ini is relative to where alembic.ini is located
   - env.py needs `sys.path.insert(0, str(Path(__file__).parent.parent))` to import models from the parent cloud directory
   - **Reusable pattern**: When using alembic with a pre-existing database, first initialize alembic, set up env.py with proper model imports, run `alembic revision --autogenerate`, then use `alembic stamp head` to mark the existing schema as the starting point
+
+---
+
+## 2026-04-21 - US-011
+
+- **What was implemented:** Bridge API client - fixed `poll_tasks()` to accept optional `project_id` parameter, renamed `trigger_reminder()` to `send_reminder()` to match acceptance criteria, updated `main.py` to use `send_reminder()`
+- **Files changed:** `bridge/bridge/api_client.py` (poll_tasks now accepts project_id param, trigger_reminder renamed to send_reminder), `bridge/bridge/main.py` (updated to call send_reminder)
+- **Learnings:**
+  - US-011 was mostly already implemented - only missing pieces were: (1) `poll_tasks(project_id=None)` parameter support, (2) method name `send_reminder` instead of `trigger_reminder`
+  - `poll_tasks(project_id=None)` - when project_id is passed as argument it overrides `self.machine_config.project_id`; when None it falls back to config value
+  - Cloud endpoint is `POST /tasks/{task_uuid}/remind` (uses internal UUID, not task_id string)
+  - python -m pytest returns exit code 5 (no tests) - expected at this stage
+  - python -m py_compile bridge/bridge/*.py passes
 
