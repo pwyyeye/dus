@@ -1,8 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { fetchTask } from "@/lib/api";
+import { fetchTask, fetchMachines, fetchProjects, updateTask, cancelTask, Machine, Project } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -12,21 +12,86 @@ function formatTime(iso: string | null) {
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
 
-function formatJson(obj: Record<string, unknown> | null): string {
-  if (!obj) return "-";
-  return JSON.stringify(obj, null, 2);
+function canCancel(status: string): boolean {
+  return ["pending", "dispatched", "running"].includes(status);
+}
+
+function canMarkComplete(status: string): boolean {
+  return status === "pending_manual";
+}
+
+function RunningAnimation() {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex space-x-1">
+        <span className="block w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+        <span className="block w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+        <span className="block w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+      </div>
+      <span className="text-sm text-blue-600">执行中...</span>
+    </div>
+  );
 }
 
 export default function TaskDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const queryClient = useQueryClient();
   const taskId = params.id as string;
 
   const { data: task, isLoading, error } = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => fetchTask(taskId),
     enabled: !!taskId,
+    refetchInterval: (query) => {
+      const task = query.state.data;
+      // Poll every 3 seconds when task is running, otherwise don't poll
+      if (task?.status === "running" || task?.status === "pending" || task?.status === "dispatched") {
+        return 3000;
+      }
+      return false;
+    },
   });
+
+  const { data: machines } = useQuery({
+    queryKey: ["machines"],
+    queryFn: fetchMachines,
+  });
+
+  const { data: projects } = useQuery({
+    queryKey: ["projects"],
+    queryFn: fetchProjects,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) => updateTask(id, { status }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (id: string) => cancelTask(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+
+  const getMachineName = (machineId: string | null): string => {
+    if (!machineId) return "-";
+    const machine = machines?.find((m: Machine) => m.id === machineId);
+    return machine?.machine_name ?? machineId.slice(0, 8);
+  };
+
+  const getProjectName = (projectId: string | null): string => {
+    if (!projectId) return "-";
+    const project = projects?.find((p: Project) => p.id === projectId);
+    return project?.project_name ?? projectId.slice(0, 8);
+  };
+
+  const result = task?.result as { stdout?: string; stderr?: string } | null;
 
   if (isLoading) {
     return (
@@ -69,6 +134,7 @@ export default function TaskDetailPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
+        {/* Basic Info Card */}
         <Card>
           <CardHeader>
             <CardTitle>基本信息</CardTitle>
@@ -81,7 +147,11 @@ export default function TaskDetailPage() {
               </div>
               <div>
                 <div className="text-muted-foreground">状态</div>
-                <StatusBadge status={task.status} />
+                {task.status === "running" ? (
+                  <RunningAnimation />
+                ) : (
+                  <StatusBadge status={task.status} />
+                )}
               </div>
               <div>
                 <div className="text-muted-foreground">创建时间</div>
@@ -95,22 +165,19 @@ export default function TaskDetailPage() {
                 <div className="text-muted-foreground">完成时间</div>
                 <div>{formatTime(task.completed_at)}</div>
               </div>
-              {task.project_id && (
-                <div>
-                  <div className="text-muted-foreground">项目ID</div>
-                  <div className="font-mono text-xs">{task.project_id}</div>
-                </div>
-              )}
-              {task.target_machine_id && (
-                <div>
-                  <div className="text-muted-foreground">目标设备</div>
-                  <div className="font-mono text-xs">{task.target_machine_id}</div>
-                </div>
-              )}
+              <div>
+                <div className="text-muted-foreground">目标设备</div>
+                <div>{getMachineName(task.target_machine_id)}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">所属项目</div>
+                <div>{getProjectName(task.project_id)}</div>
+              </div>
             </div>
           </CardContent>
         </Card>
 
+        {/* Execution Instruction Card */}
         <Card>
           <CardHeader>
             <CardTitle>执行指令</CardTitle>
@@ -120,8 +187,26 @@ export default function TaskDetailPage() {
           </CardContent>
         </Card>
 
+        {/* Windsurf Reminder Info */}
+        {task.status === "pending_manual" && (
+          <Card className="md:col-span-2 border-amber-200 bg-amber-50/50">
+            <CardHeader>
+              <CardTitle className="text-amber-700"> Windsurf 任务待手动执行</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-amber-700">
+                提醒已发送至企业微信，请登录目标设备手动执行任务。
+              </p>
+              <p className="text-xs text-amber-600">
+                执行完成后请点击下方「标记完成」按钮。
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error Message */}
         {task.error_message && (
-          <Card className="md:col-span-2">
+          <Card className="md:col-span-2 border-destructive/50 bg-destructive/5">
             <CardHeader>
               <CardTitle className="text-destructive">错误信息</CardTitle>
             </CardHeader>
@@ -131,14 +216,69 @@ export default function TaskDetailPage() {
           </Card>
         )}
 
+        {/* Execution Result */}
+        {(result?.stdout || result?.stderr) && (
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>执行结果</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {result.stdout && (
+                <div>
+                  <div className="text-sm font-medium mb-1">标准输出 (stdout)</div>
+                  <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-64 font-mono">
+                    {result.stdout}
+                  </pre>
+                </div>
+              )}
+              {result.stderr && (
+                <div>
+                  <div className="text-sm font-medium mb-1">标准错误 (stderr)</div>
+                  <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-64 font-mono text-destructive">
+                    {result.stderr}
+                  </pre>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Raw Result (if no stdout/stderr but has result) */}
+        {!result?.stdout && !result?.stderr && task.result && Object.keys(task.result).length > 0 && (
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>执行结果</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-64">
+                {JSON.stringify(task.result, null, 2)}
+              </pre>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Action Buttons */}
         <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>执行结果</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-64">
-              {formatJson(task.result)}
-            </pre>
+          <CardContent className="pt-6">
+            <div className="flex gap-3 justify-end">
+              {canCancel(task.status) && (
+                <Button
+                  variant="destructive"
+                  onClick={() => cancelMutation.mutate(task.id)}
+                  disabled={cancelMutation.isPending}
+                >
+                  取消任务
+                </Button>
+              )}
+              {canMarkComplete(task.status) && (
+                <Button
+                  onClick={() => updateMutation.mutate({ id: task.id, status: "completed" })}
+                  disabled={updateMutation.isPending}
+                >
+                  标记完成
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

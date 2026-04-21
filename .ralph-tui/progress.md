@@ -385,3 +385,31 @@ after each iteration and it's included in prompts for context.
   - ✅ pnpm lint passes (1 pre-existing warning about `watch()` from react-hook-form)
   - ⚠️ Browser verification skipped due to browse tool server startup issues
 
+---
+
+## 2026-04-21 - US-021
+
+- **What was implemented:** Task detail page `/tasks/:id` with full functionality
+- **Files changed:** `frontend/src/app/tasks/[id]/page.tsx` (complete rewrite)
+- **Learnings:**
+  - `refetchInterval` can be a function in TanStack Query v5 — returns the polling interval dynamically based on task status (3s for running/pending/dispatched, `false` to disable for terminal states)
+  - `result.stdout` and `result.stderr` are stored in `task.result` as nested fields, not at the top level — need to cast and access via `(task.result as { stdout?: string; stderr?: string })`
+  - "Mark Complete" button available for `pending_manual` status, "Cancel Task" button available for `pending`/`dispatched`/`running` statuses
+  - Running status displays animated bouncing dots with `animate-bounce` CSS classes and `animationDelay` style properties
+  - Windsurf reminder card shown for `pending_manual` status uses amber color scheme with border and bg tint
+  - Error message card uses `border-destructive/50` and `bg-destructive/5` for subtle red highlight
+  - `canMarkComplete()` returns true only for `pending_manual` status — these are Windsurf tasks that need manual user action
+  - Polling: 3-second interval for `pending`/`dispatched`/`running`, no polling for terminal states
+- **Acceptance criteria status:**
+  - ✅ Task basic info card (title, status, target device, project)
+  - ✅ Execution progress display (dynamic animation for `running` status)
+  - ✅ Windsurf reminder info display (shown for `pending_manual` status)
+  - ✅ Execution result display (`result.stdout` / `result.stderr` in code block format)
+  - ✅ Error message display (`error_message` in red highlight when non-empty)
+  - ✅ "Mark Complete" button (available for `pending_manual` status)
+  - ✅ "Cancel Task" button (available for `pending` / `dispatched` / `running` status)
+  - ✅ Polling interval: 3 seconds (dynamic adjustment when task is running)
+  - ✅ pnpm typecheck passes
+  - ✅ pnpm lint passes (1 pre-existing warning in task-create-modal.tsx)
+  - ✅ Browser verification passed — task detail page loads correctly with all UI elements (basic info card, execution instruction, execution result with stdout displayed in code block)
+
