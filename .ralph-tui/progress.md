@@ -11,6 +11,25 @@ after each iteration and it's included in prompts for context.
 
 ---
 
+## 2026-04-21 - US-005
+
+- **What was implemented:** FastAPI application entry point with API key auth, CORS, health endpoint, and environment variable configuration
+- **Files changed:**
+  - `cloud/main.py` (already existed - FastAPI app with lifespan, CORS, API key auth, routes under /api/v1)
+  - `cloud/config.py` (already existed - Settings with DATABASE_URL, API_KEY, WECHAT_WEBHOOK_URL)
+  - `cloud/database.py` (already existed - async SQLAlchemy setup)
+  - `cloud/models.py` (already existed - Machine, Task, Project models)
+  - `cloud/schemas.py` (already existed - Pydantic schemas)
+  - `cloud/routers/machines.py`, `tasks.py`, `projects.py` (already existed - route handlers)
+- **Learnings:**
+  - US-005 was already fully implemented in a previous iteration
+  - All acceptance criteria met: /api/v1 routes registered, X-API-Key header validation, CORS configured, /health endpoint works, env vars set
+  - FastAPI `lifespan` context manager handles startup/shutdown (create tables on startup, dispose engine on shutdown)
+  - `pydantic_settings.BaseSettings` reads from `.env` file automatically
+  - API key validation accepts any key >= 8 chars in dev mode
+
+---
+
 ## 2026-04-21 - US-001
 
 - **What was implemented:** Agent CLI smoke testing - verified claude (working), openclaw (not installed), hermes (not installed), codex (installed but requires auth)

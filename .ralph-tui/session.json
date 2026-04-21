@@ -3,10 +3,10 @@
   "sessionId": "96336556-2367-4665-aeb2-4fa2e9aa0b96",
   "status": "running",
   "startedAt": "2026-04-21T02:42:49.953Z",
-  "updatedAt": "2026-04-21T03:05:35.042Z",
-  "currentIteration": 3,
+  "updatedAt": "2026-04-21T03:06:51.229Z",
+  "currentIteration": 4,
   "maxIterations": 50,
-  "tasksCompleted": 3,
+  "tasksCompleted": 4,
   "isPaused": false,
   "agentPlugin": "claude",
   "trackerState": {
@@ -35,8 +35,8 @@
       {
         "id": "US-004",
         "title": "M1 云端骨架 - 数据库建表",
-        "status": "open",
-        "completedInSession": false
+        "status": "completed",
+        "completedInSession": true
       },
       {
         "id": "US-005",
@@ -214,6 +214,16 @@
       "durationMs": 213009,
       "startedAt": "2026-04-21T02:58:48.106Z",
       "endedAt": "2026-04-21T03:02:21.115Z"
+    },
+    {
+      "iteration": 4,
+      "status": "completed",
+      "taskId": "US-004",
+      "taskTitle": "M1 云端骨架 - 数据库建表",
+      "taskCompleted": true,
+      "durationMs": 192735,
+      "startedAt": "2026-04-21T03:02:22.306Z",
+      "endedAt": "2026-04-21T03:05:35.041Z"
     }
   ],
   "skippedTaskIds": [],
