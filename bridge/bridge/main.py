@@ -29,6 +29,7 @@ class Bridge:
         self.semaphore = asyncio.Semaphore(MAX_CONCURRENT_TASKS)
         self._running = True
         self._running_tasks = 0
+        self._tasks: list[asyncio.Task] = []
 
     async def start(self):
         """Main entry: register then poll loop."""
@@ -46,7 +47,9 @@ class Bridge:
             try:
                 tasks = await self.api.poll_tasks()
                 for task in tasks:
-                    asyncio.create_task(self._handle_task_safe(task))
+                    t = asyncio.create_task(self._handle_task_safe(task))
+                    self._tasks.append(t)
+                    t.add_done_callback(lambda _t: self._tasks.remove(_t) if _t in self._tasks else None)
             except Exception as e:
                 logger.error(f"Poll loop error: {e}")
 
@@ -97,6 +100,10 @@ class Bridge:
         self._running = False
 
     async def cleanup(self):
+        # Wait for running tasks to complete gracefully
+        if self._tasks:
+            logger.info(f"Waiting for {len(self._tasks)} task(s) to complete...")
+            await asyncio.gather(*self._tasks, return_exceptions=True)
         await self.api.close()
 
 

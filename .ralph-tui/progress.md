@@ -17,6 +17,30 @@ after each iteration and it's included in prompts for context.
 
 - **Poll endpoint pattern**: Updates `last_poll_at` and sets status=`online` on every poll. Filters tasks by `target_machine_id` and `status=pending`, optionally filters by `project_id` string (looked up to UUID). Batch-updates matched tasks to `dispatched` in memory without explicit flush (relies on get_db commit).
 
+- **Graceful async shutdown pattern**: Track asyncio tasks in a list, add done_callbacks to remove completed tasks, and use `asyncio.gather(*tasks, return_exceptions=True)` in cleanup to wait for running tasks before exiting.
+
+---
+
+## 2026-04-21 - US-013
+
+- **What was implemented:** Main polling loop - added graceful shutdown that waits for running tasks before exiting
+- **Files changed:** `bridge/bridge/main.py` (added `_tasks` list to track running tasks, modified `start()` to store task references and add done_callbacks for cleanup, modified `cleanup()` to wait for running tasks with `asyncio.gather`)
+- **Learnings:**
+  - US-013 was mostly already implemented - only missing piece was graceful shutdown waiting for running tasks
+  - Solution: Track asyncio tasks in a list `_tasks`, use done_callbacks to auto-remove completed tasks, and `asyncio.gather(*self._tasks, return_exceptions=True)` in cleanup
+  - `return_exceptions=True` prevents gather from raising if a task fails
+  - Signal handlers (SIGINT/SIGTERM) call `bridge.stop()` which sets `_running = False` to break the poll loop
+- **Acceptance criteria status:**
+  - ✅ `main()` calls `register_machine()` on startup (line 40)
+  - ✅ Main loop polls every `config.poll_interval` (default 60s) (line 60)
+  - ✅ `handle_task()` creates asyncio task for each pending task (line 50)
+  - ✅ `remote_execution` tasks call `execute_remote()` (lines 85-96)
+  - ✅ `manual_only` tasks call `send_reminder()` (lines 80-83)
+  - ✅ Concurrent execution limit: `asyncio.Semaphore(3)` (line 29)
+  - ✅ Graceful `Ctrl+C` shutdown waiting for running tasks (lines 50-52, 102-106)
+  - ✅ python -m pytest passes (exit code 5 = no tests, expected)
+  - ✅ python -m py_compile cloud/**/*.py passes
+
 ---
 
 ## 2026-04-21 - US-010
