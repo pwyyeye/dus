@@ -169,6 +169,22 @@ export async function cancelTask(id: string): Promise<Task> {
   return updateTask(id, { status: "cancelled" });
 }
 
+export async function fetchUnassignedTasks(params?: { limit?: number; offset?: number }): Promise<Task[]> {
+  const query = new URLSearchParams();
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  const qs = query.toString();
+  const res = await request<ApiResponse<Task[]>>(`/tasks/pool${qs ? `?${qs}` : ""}`);
+  return res.data;
+}
+
+export async function claimTask(taskId: string, machineId: string): Promise<Task> {
+  const res = await request<ApiResponse<Task>>(`/tasks/${taskId}/claim?machine_uuid=${machineId}`, {
+    method: "POST",
+  });
+  return res.data;
+}
+
 // ── Project API ──
 
 export async function fetchProjects(): Promise<Project[]> {
@@ -181,6 +197,37 @@ export async function createProject(data: {
   root_path?: string;
 }): Promise<Project> {
   const res = await request<ApiResponse<Project>>("/projects", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+// ── Template API ──
+
+export interface Template {
+  id: string;
+  name: string;
+  description: string | null;
+  instruction: string;
+  category: string | null;
+  is_enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function fetchTemplates(): Promise<Template[]> {
+  const res = await request<ApiResponse<Template[]>>("/templates");
+  return res.data;
+}
+
+export async function createTemplate(data: {
+  name: string;
+  description?: string;
+  instruction: string;
+  category?: string;
+}): Promise<Template> {
+  const res = await request<ApiResponse<Template>>("/templates", {
     method: "POST",
     body: JSON.stringify(data),
   });

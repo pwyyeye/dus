@@ -187,11 +187,11 @@ export default function TaskDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Windsurf Reminder Info */}
+        {/* Manual Task Reminder */}
         {task.status === "pending_manual" && (
           <Card className="md:col-span-2 border-amber-200 bg-amber-50/50">
             <CardHeader>
-              <CardTitle className="text-amber-700"> Windsurf 任务待手动执行</CardTitle>
+              <CardTitle className="text-amber-700"> 手动任务待执行</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <p className="text-sm text-amber-700">

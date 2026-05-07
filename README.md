@@ -79,11 +79,12 @@
 |------|------|------|
 | `machine_id` | string | 设备唯一标识（如 `macbook-pro-office`） |
 | `machine_name` | string | 展示名称 |
-| `agent_type` | enum | Agent 类型：claude_code / openclaw / hermes_agent / codex / windsurf |
+| `agent_type` | enum | Agent 类型：claude_code / openclaw / hermes_agent / codex |
 | `agent_capability` | enum | 能力：remote_execution（远程执行）/ manual_only（仅提醒） |
 | `status` | enum | 在线状态：online / offline |
 | `is_enabled` | bool | 是否启用（禁用后不接收新任务） |
 | `agent_status` | enum | Claude 状态：idle（空闲）/ busy（执行中）/ offline |
+| `project_id` | uuid | 归属项目（自动领取时只领取该项目任务） |
 
 ### Task（任务）
 | 字段 | 类型 | 说明 |
@@ -220,6 +221,11 @@ chmod +x dus-setup.sh
 - Bridge 注册时可通过 `project_id` 指定关联项目
 - 云端自动创建不存在的项目
 - 无需预先在云端创建项目，Bridge 上报时自动注册
+
+**自动领取项目隔离**
+- Machine 绑定 `project_id`，自动领取和手动 claim 时只领取自己项目的任务
+- Bridge 轮询时服务端强制使用机器绑定的项目，不再依赖客户端传入参数
+- 跨项目领取返回 403 拒绝
 
 **一键安装 Bridge**
 - `bridge/dus-setup.sh` 一键安装脚本

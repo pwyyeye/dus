@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchTasks, fetchMachines, cancelTask, Task, Machine } from "@/lib/api";
+import { fetchTasks, fetchMachines, fetchUnassignedTasks, claimTask, cancelTask, Task, Machine } from "@/lib/api";
 import { TaskCreateModal } from "@/components/task-create-modal";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -20,13 +20,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PlusIcon, EyeIcon, XIcon } from "lucide-react";
+import { PlusIcon, EyeIcon, XIcon, HandIcon } from "lucide-react";
 
-type StatusFilter = "all" | "pending" | "running" | "completed" | "failed";
+type StatusFilter = "all" | "pending" | "running" | "completed" | "failed" | "unassigned";
 
 const STATUS_TABS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "全部" },
   { value: "pending", label: "待处理" },
+  { value: "unassigned", label: "未分配" },
   { value: "running", label: "运行中" },
   { value: "completed", label: "已完成" },
   { value: "failed", label: "失败" },
@@ -52,7 +53,10 @@ export default function TasksPage() {
 
   const { data: tasks, isLoading } = useQuery({
     queryKey: ["tasks", statusFilter],
-    queryFn: () => fetchTasks(statusFilter === "all" ? undefined : { status: statusFilter }),
+    queryFn: () => {
+      if (statusFilter === "unassigned") return fetchUnassignedTasks();
+      return fetchTasks(statusFilter === "all" ? undefined : { status: statusFilter });
+    },
     refetchInterval: 5000,
   });
 
@@ -68,19 +72,22 @@ export default function TasksPage() {
     },
   });
 
+  const claimMutation = useMutation({
+    mutationFn: ({ taskId, machineId }: { taskId: string; machineId: string }) =>
+      claimTask(taskId, machineId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["unassigned"] });
+    },
+  });
+
   const getMachineName = (machineId: string | null): string => {
     if (!machineId) return "-";
     const machine = machines?.find((m: Machine) => m.id === machineId);
     return machine?.machine_name ?? machineId.slice(0, 8);
   };
 
-  const getFilteredTasks = (): Task[] => {
-    if (!tasks) return [];
-    if (statusFilter === "all") return tasks;
-    return tasks.filter((t: Task) => t.status === statusFilter);
-  };
-
-  const filteredTasks = getFilteredTasks();
+  const filteredTasks = tasks ?? [];
 
   return (
     <div className="space-y-6">
@@ -147,7 +154,11 @@ export default function TasksPage() {
                         )}
                       </div>
                     </TableCell>
-                    <TableCell className="text-sm">{getMachineName(task.target_machine_id)}</TableCell>
+                    <TableCell className="text-sm">
+                      {task.target_machine_id
+                        ? getMachineName(task.target_machine_id)
+                        : <span className="text-amber-600 font-medium">未分配</span>}
+                    </TableCell>
                     <TableCell>
                       <StatusBadge status={task.status} />
                     </TableCell>
@@ -156,6 +167,15 @@ export default function TasksPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex gap-1">
+                        {statusFilter === "unassigned" && task.status === "pending" && !task.target_machine_id && (
+                          <ClaimDropdown
+                            machines={machines || []}
+                            onClaim={(machineId) =>
+                              claimMutation.mutate({ taskId: task.id, machineId })
+                            }
+                            disabled={claimMutation.isPending}
+                          />
+                        )}
                         <Button
                           size="icon-xs"
                           variant="ghost"
@@ -184,6 +204,55 @@ export default function TasksPage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function ClaimDropdown({
+  machines,
+  onClaim,
+  disabled,
+}: {
+  machines: Machine[];
+  onClaim: (machineId: string) => void;
+  disabled: boolean;
+}) {
+  const onlineMachines = machines.filter((m) => m.status === "online");
+
+  if (onlineMachines.length === 0) return null;
+
+  if (onlineMachines.length === 1) {
+    return (
+      <Button
+        size="icon-xs"
+        variant="ghost"
+        onClick={() => onClaim(onlineMachines[0].id)}
+        disabled={disabled}
+        title="认领任务"
+      >
+        <HandIcon className="size-3.5" />
+      </Button>
+    );
+  }
+
+  return (
+    <div className="relative group">
+      <Button size="icon-xs" variant="ghost" title="认领任务" disabled={disabled}>
+        <HandIcon className="size-3.5" />
+      </Button>
+      <div className="absolute left-0 top-full z-50 hidden min-w-[160px] rounded-md border bg-popover p-1 shadow-md group-hover:block">
+        {onlineMachines.map((m) => (
+          <button
+            key={m.id}
+            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+            onClick={() => onClaim(m.id)}
+            disabled={disabled}
+          >
+            <HandIcon className="size-3" />
+            {m.machine_name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

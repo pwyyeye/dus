@@ -6,10 +6,16 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "概览", icon: "📊" },
+  { href: "/devices", label: "设备仪表盘", icon: "📈" },
   { href: "/machines", label: "设备管理", icon: "🖥️" },
   { href: "/tasks", label: "任务管理", icon: "📋" },
   { href: "/projects", label: "项目管理", icon: "📁" },
 ];
+
+async function handleLogout() {
+  await fetch("/api/logout", { method: "POST" });
+  window.location.href = "/login";
+}
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -45,8 +51,14 @@ export function Sidebar() {
           );
         })}
       </nav>
-      <div className="p-4 border-t text-xs text-muted-foreground">
-        v1.0.0
+      <div className="p-4 border-t flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">v1.0.0</span>
+        <button
+          onClick={handleLogout}
+          className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          退出
+        </button>
       </div>
     </aside>
   );

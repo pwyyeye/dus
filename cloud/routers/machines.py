@@ -29,7 +29,7 @@ router = APIRouter(prefix="/machines", tags=["machines"])
 async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(get_db)):
     """Register a new machine or update existing one. Auto-creates project if not exists."""
     # Auto-create project if project_id is provided and doesn't exist
-    project = None
+    resolved_project_id = None
     if payload.project_id:
         stmt = select(Project).where(Project.project_id == payload.project_id)
         result = await db.execute(stmt)
@@ -40,6 +40,8 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
                 project_name=payload.project_id,
             )
             db.add(project)
+            await db.flush()
+        resolved_project_id = project.id
 
     stmt = select(Machine).where(Machine.machine_id == payload.machine_id)
     result = await db.execute(stmt)
@@ -51,6 +53,7 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
         machine.agent_capability = payload.agent_capability.value
         machine.agent_version = payload.agent_version
         machine.status = "online"
+        machine.project_id = resolved_project_id or machine.project_id
         machine.last_poll_at = datetime.now(timezone.utc)
     else:
         machine = Machine(
@@ -60,6 +63,7 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
             agent_capability=payload.agent_capability.value,
             agent_version=payload.agent_version,
             status="online",
+            project_id=resolved_project_id,
             last_poll_at=datetime.now(timezone.utc),
         )
         db.add(machine)
@@ -201,11 +205,11 @@ async def update_machine(
 @router.get("/{machine_uuid}/poll", response_model=PollResponse)
 async def poll_tasks(
     machine_uuid: uuid.UUID,
-    project_id: str | None = Query(default=None, description="项目标识，不验证UUID格式"),
+    project_id: str | None = Query(default=None, description="已废弃：自动使用机器绑定的项目"),
     db: AsyncSession = Depends(get_db),
 ):
     """Device polls for pending tasks. Updates heartbeat and returns tasks.
-    Optionally filter by project_id to get tasks for a specific project window."""
+    Returns both pre-assigned tasks and unassigned tasks within machine's own project (auto-claim)."""
     stmt = select(Machine).where(Machine.id == machine_uuid)
     result = await db.execute(stmt)
     machine = result.scalar_one_or_none()
@@ -216,26 +220,42 @@ async def poll_tasks(
     machine.last_poll_at = datetime.now(timezone.utc)
     machine.status = "online"
 
-    # Fetch pending tasks for this machine, optionally filtered by project
-    tasks_stmt = select(Task).where(
+    # Pre-assigned pending tasks for this machine
+    assigned_stmt = select(Task).where(
         Task.target_machine_id == machine.id,
         Task.status == "pending",
-    )
-    if project_id:
-        # Look up project by project_id string to get its UUID
-        project_stmt = select(Project).where(Project.project_id == project_id)
-        project_result = await db.execute(project_stmt)
-        project = project_result.scalar_one_or_none()
-        if project:
-            tasks_stmt = tasks_stmt.where(Task.project_id == project.id)
+    ).order_by(Task.created_at.asc())
+    assigned_result = await db.execute(assigned_stmt)
+    assigned_tasks = list(assigned_result.scalars().all())
 
-    tasks_stmt = tasks_stmt.order_by(Task.created_at.asc())
-    tasks_result = await db.execute(tasks_stmt)
-    tasks = tasks_result.scalars().all()
+    # Auto-claim: unassigned pending tasks ONLY within machine's own project
+    unassigned_stmt = select(Task).where(
+        Task.target_machine_id.is_(None),
+        Task.status == "pending",
+        Task.project_id == machine.project_id,
+    ).order_by(Task.created_at.asc())
+    unassigned_result = await db.execute(unassigned_stmt)
+    unassigned_tasks = list(unassigned_result.scalars().all())
 
-    # Mark as dispatched
     poll_tasks_out: list[PollTaskResponse] = []
-    for task in tasks:
+
+    # Claim unassigned tasks
+    for task in unassigned_tasks:
+        task.target_machine_id = machine.id
+        task.status = "dispatched"
+        poll_tasks_out.append(
+            PollTaskResponse(
+                id=task.id,
+                task_id=task.task_id,
+                instruction=task.instruction,
+                status="dispatched",
+                project_id=task.project_id,
+                agent_capability=machine.agent_capability,
+            )
+        )
+
+    # Pre-assigned tasks
+    for task in assigned_tasks:
         task.status = "dispatched"
         poll_tasks_out.append(
             PollTaskResponse(

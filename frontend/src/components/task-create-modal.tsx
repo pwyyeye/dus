@@ -3,13 +3,12 @@
 import { useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { createTask, fetchMachines, fetchProjects, Machine, Project } from "@/lib/api";
+import { createTask, fetchMachines, fetchProjects, fetchTemplates, Machine, Project, Template } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -48,6 +47,11 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
   const { data: projects } = useQuery({
     queryKey: ["projects"],
     queryFn: fetchProjects,
+  });
+
+  const { data: templates } = useQuery({
+    queryKey: ["templates"],
+    queryFn: fetchTemplates,
   });
 
   const {
@@ -95,13 +99,38 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {trigger && <DialogTrigger>{trigger}</DialogTrigger>}
+    <>
+      {trigger && <div onClick={() => setIsOpen(true)}>{trigger}</div>}
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogHeader>
           <DialogTitle>创建新任务</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="task-template">任务模板</Label>
+            <Select
+              onValueChange={(val) => {
+                const tmpl = templates?.find((t: Template) => t.id === val);
+                if (tmpl) {
+                  setValue("instruction", tmpl.instruction);
+                }
+              }}
+            >
+              <SelectTrigger id="task-template">
+                <SelectValue placeholder="选择模板（可选）" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">不使用模板</SelectItem>
+                {templates?.map((t: Template) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="task-instruction">执行指令</Label>
             <Textarea
@@ -167,5 +196,6 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
         </form>
       </DialogContent>
     </Dialog>
+    </>
   );
 }

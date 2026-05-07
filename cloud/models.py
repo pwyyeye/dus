@@ -56,10 +56,14 @@ class Machine(Base):
     status: Mapped[str] = mapped_column(String(20), default="offline")
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     agent_status: Mapped[str] = mapped_column(String(20), default="offline")
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(), ForeignKey("projects.id"), nullable=True
+    )
     last_poll_at: Mapped[datetime | None] = mapped_column(nullable=True)
     registered_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="target_machine")
+    project: Mapped[Project | None] = relationship()
 
     __table_args__ = (
         Index("idx_machines_status", "status"),
@@ -97,6 +101,9 @@ class Task(Base):
     target_machine_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(), ForeignKey("machines.id"), nullable=True
     )
+    template_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(), ForeignKey("templates.id"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -106,9 +113,30 @@ class Task(Base):
 
     target_machine: Mapped[Machine | None] = relationship(back_populates="tasks")
     project: Mapped[Project | None] = relationship(back_populates="tasks")
+    template: Mapped["TaskTemplate | None"] = relationship(back_populates="tasks")
 
     __table_args__ = (
         Index("idx_tasks_status", "status"),
         Index("idx_tasks_target", "target_machine_id"),
         Index("idx_tasks_project", "project_id"),
+        Index("idx_tasks_template", "template_id"),
+    )
+
+
+class TaskTemplate(Base):
+    __tablename__ = "templates"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    instruction: Mapped[str] = mapped_column(Text, nullable=False)
+    category: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+    tasks: Mapped[list["Task"]] = relationship(back_populates="template")
+
+    __table_args__ = (
+        Index("idx_templates_category", "category"),
     )

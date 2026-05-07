@@ -157,9 +157,7 @@ export default function ProjectsPage() {
           <p className="text-muted-foreground">查看所有项目及其闲置状态</p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
-          <DialogTrigger render={<Button />}>
-            创建项目
-          </DialogTrigger>
+          <DialogTrigger render={<Button>创建项目</Button>} />
           <DialogContent className="sm:max-w-[420px]">
             <DialogHeader>
               <DialogTitle>创建新项目</DialogTitle>

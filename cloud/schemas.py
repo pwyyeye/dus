@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── Enums ──
@@ -16,7 +17,6 @@ class AgentType(str, Enum):
     openclaw = "openclaw"
     hermes_agent = "hermes_agent"
     codex = "codex"
-    windsurf = "windsurf"
 
 
 class AgentCapability(str, Enum):
@@ -63,6 +63,13 @@ class MachineCreate(BaseModel):
     agent_version: str | None = None
     project_id: str | None = Field(default=None, max_length=255, description="关联的项目ID，不存在则自动创建")
 
+    @field_validator("machine_id")
+    @classmethod
+    def validate_machine_id(cls, v: str) -> str:
+        if not re.match(r'^[a-zA-Z0-9_-]+$', v):
+            raise ValueError("machine_id 只能包含字母、数字、下划线和连字符")
+        return v
+
 
 class MachineResponse(BaseModel):
     id: uuid.UUID
@@ -74,6 +81,7 @@ class MachineResponse(BaseModel):
     status: MachineStatus
     is_enabled: bool = True
     agent_status: AgentStatus = AgentStatus.offline
+    project_id: uuid.UUID | None = None
     last_poll_at: datetime | None
     registered_at: datetime
     pending_task_count: int = 0
@@ -90,6 +98,7 @@ class MachineListResponse(BaseModel):
     status: MachineStatus
     is_enabled: bool = True
     agent_status: AgentStatus = AgentStatus.offline
+    project_id: uuid.UUID | None = None
     last_poll_at: datetime | None
 
     model_config = {"from_attributes": True}
@@ -104,6 +113,7 @@ class MachineDashboardResponse(BaseModel):
     status: MachineStatus
     is_enabled: bool = True
     agent_status: AgentStatus = AgentStatus.offline
+    project_id: uuid.UUID | None = None
     last_poll_at: datetime | None
     running_tasks: list["TaskListResponse"] = []
     completed_tasks_count: int = 0
@@ -132,8 +142,8 @@ class TaskUpdate(BaseModel):
 
 class TaskResultSubmit(BaseModel):
     exit_code: int = 0
-    stdout: str = ""
-    stderr: str = ""
+    stdout: str = Field(default="", max_length=50000)
+    stderr: str = Field(default="", max_length=50000)
     error_type: str | None = None
 
 
@@ -186,6 +196,13 @@ class ProjectCreate(BaseModel):
     idle_threshold_hours: int = 48
     reminder_interval_hours: int = 24
 
+    @field_validator("root_path")
+    @classmethod
+    def validate_root_path(cls, v: str | None) -> str | None:
+        if v and ".." in v:
+            raise ValueError("root_path 不允许包含 '..' 路径穿越")
+        return v
+
 
 class ProjectUpdate(BaseModel):
     project_name: str | None = None
@@ -218,6 +235,7 @@ class ApiResponse(BaseModel):
     success: bool = True
     data: Any = None
     message: str = "ok"
+    meta: dict | None = None
 
 
 class ApiErrorResponse(BaseModel):
@@ -229,3 +247,34 @@ class ApiErrorResponse(BaseModel):
 class PollResponse(BaseModel):
     machine: MachineListResponse
     tasks: list[PollTaskResponse]
+
+
+# ── Template Schemas ──
+
+
+class TemplateCreate(BaseModel):
+    name: str = Field(..., max_length=255)
+    description: str | None = None
+    instruction: str = Field(..., max_length=5000)
+    category: str | None = Field(default=None, max_length=50)
+
+
+class TemplateUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    instruction: str | None = None
+    category: str | None = None
+    is_enabled: bool | None = None
+
+
+class TemplateResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str | None
+    instruction: str
+    category: str | None
+    is_enabled: bool
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}

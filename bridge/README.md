@@ -71,7 +71,7 @@ python -m bridge.main
 | `machine.machine_name` | 展示名称 |
 | `machine.agent_type` | Agent 类型：`claude_code` / `openclaw` / `hermes_agent` / `codex` / `windsurf` |
 | `machine.agent_capability` | 能力：`remote_execution`（远程执行）或 `manual_only`（仅提醒） |
-| `machine.project_id` | 关联的项目 ID（可选，不填则不关联项目） |
+| `machine.project_id` | 关联的项目 ID（自动领取/claim 时限定项目范围） |
 | `cloud.api_url` | 云端 API 地址 |
 | `cloud.api_key` | API 认证密钥 |
 | `cloud.poll_interval` | 轮询间隔（秒） |
@@ -103,7 +103,7 @@ cd ~/projects/project-B
 ./dus-setup.sh
 ```
 
-每个 Bridge 通过 `project_id` 区分任务归属，轮询时只拉取该项目的任务。
+每个 Bridge 通过 `project_id` 区分任务归属，轮询时只拉取该项目的任务。自动领取和手动 claim 均限定在机器绑定的项目范围内。
 
 ## 工作流程
 
@@ -118,10 +118,9 @@ cd ~/projects/project-B
 | Agent | 类型 | 状态 |
 |-------|------|------|
 | Claude Code | `claude_code` | 已实现 |
-| OpenClaw | `openclaw` | 占位（待验证 CLI） |
-| Hermes Agent | `hermes_agent` | 占位（待验证 CLI） |
-| Codex | `codex` | 占位（待验证 CLI） |
-| Windsurf | `windsurf` | 占位（待验证 CLI） |
+| OpenClaw | `openclaw` | 已实现（Generic 模式） |
+| Hermes Agent | `hermes_agent` | 已实现（Generic 模式） |
+| Codex | `codex` | 已实现（--print 模式） |
 
 ## 部署指南
 

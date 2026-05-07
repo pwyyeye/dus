@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -45,9 +45,23 @@ async def create_project(payload: ProjectCreate, db: AsyncSession = Depends(get_
 
 
 @router.get("", response_model=ApiResponse)
-async def list_projects(db: AsyncSession = Depends(get_db)):
-    """List all projects with idle hours calculation."""
-    stmt = select(Project).where(Project.is_archived == False).order_by(Project.created_at.desc())
+async def list_projects(
+    limit: int = Query(default=50, le=200, ge=1),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """List projects with idle hours calculation and pagination."""
+    count_stmt = select(func.count(Project.id)).where(Project.is_archived == False)
+    count_result = await db.execute(count_stmt)
+    total = count_result.scalar() or 0
+
+    stmt = (
+        select(Project)
+        .where(Project.is_archived == False)
+        .order_by(Project.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     projects = result.scalars().all()
 
@@ -65,7 +79,7 @@ async def list_projects(db: AsyncSession = Depends(get_db)):
             resp.is_exceeding_threshold = None
         data.append(resp.model_dump(mode="json"))
 
-    return ApiResponse(data=data)
+    return ApiResponse(data=data, message="ok", meta={"total": total, "limit": limit, "offset": offset})
 
 
 @router.put("/{project_uuid}", response_model=ApiResponse)

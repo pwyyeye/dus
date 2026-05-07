@@ -144,9 +144,7 @@ export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0
             {isEnabled ? "禁用" : "启用"}
           </Button>
           <Dialog open={dispatchOpen} onOpenChange={setDispatchOpen}>
-            <DialogTrigger render={<Button size="sm" className="flex-1" disabled={!isEnabled || !isOnline} />}>
-              下发任务
-            </DialogTrigger>
+            <DialogTrigger render={<Button size="sm" className="flex-1" disabled={!isEnabled || !isOnline}>下发任务</Button>} />
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>向 {machine.machine_name} 下发任务</DialogTitle>

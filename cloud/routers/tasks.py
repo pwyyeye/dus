@@ -80,6 +80,26 @@ async def list_tasks(
     )
 
 
+@router.get("/pool", response_model=ApiResponse)
+async def list_unassigned_tasks(
+    limit: int = Query(default=50, le=200),
+    offset: int = Query(default=0, ge=0),
+    db: AsyncSession = Depends(get_db),
+):
+    """List unassigned pending tasks (task pool for auto-claim)."""
+    stmt = select(Task).where(
+        Task.target_machine_id.is_(None),
+        Task.status == "pending",
+    ).order_by(Task.created_at.desc()).offset(offset).limit(limit)
+
+    result = await db.execute(stmt)
+    tasks = result.scalars().all()
+
+    return ApiResponse(
+        data=[TaskListResponse.model_validate(t).model_dump(mode="json") for t in tasks]
+    )
+
+
 @router.get("/{task_uuid}", response_model=ApiResponse)
 async def get_task(task_uuid: uuid.UUID, db: AsyncSession = Depends(get_db)):
     """Get task details."""
@@ -230,9 +250,49 @@ async def trigger_reminder(task_uuid: uuid.UUID, db: AsyncSession = Depends(get_
         f"完成后请手动标记任务完成: [查看任务]({task_link})"
     )
 
-    await send_wechat_markdown(title="⚠️ Windsurf 手动任务提醒", content=message_content)
+    await send_wechat_markdown(title="⚠️ 手动任务提醒", content=message_content)
 
     return ApiResponse(
         data=TaskResponse.model_validate(task).model_dump(mode="json"),
         message="Reminder triggered",
+    )
+
+
+@router.post("/{task_uuid}/claim", response_model=ApiResponse)
+async def claim_task(
+    task_uuid: uuid.UUID,
+    machine_uuid: uuid.UUID = Query(..., description="Machine UUID claiming the task"),
+    db: AsyncSession = Depends(get_db),
+):
+    """Claim an unassigned pending task. Only allowed if the task belongs to the machine's project."""
+    stmt = select(Task).where(Task.id == task_uuid)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.target_machine_id is not None:
+        raise HTTPException(status_code=400, detail="Task already assigned to a machine")
+
+    if task.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Task is '{task.status}', cannot claim")
+
+    stmt = select(Machine).where(Machine.id == machine_uuid)
+    result = await db.execute(stmt)
+    machine = result.scalar_one_or_none()
+    if not machine:
+        raise HTTPException(status_code=404, detail="Machine not found")
+
+    if task.project_id != machine.project_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot claim tasks outside your project scope",
+        )
+
+    task.target_machine_id = machine_uuid
+    task.status = "dispatched"
+
+    return ApiResponse(
+        data=TaskListResponse.model_validate(task).model_dump(mode="json"),
+        message="Task claimed successfully",
     )

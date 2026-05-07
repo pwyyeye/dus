@@ -13,6 +13,9 @@ from bridge.executor import get_executor
 from bridge.logger import setup_logger
 
 MAX_CONCURRENT_TASKS = 3
+REGISTER_RETRY_BASE = 2
+REGISTER_RETRY_MAX = 60
+CONSECUTIVE_401_THRESHOLD = 3
 
 
 class Bridge:
@@ -30,6 +33,7 @@ class Bridge:
         self._running = True
         self._running_tasks = 0
         self._tasks: list[asyncio.Task] = []
+        self._consecutive_401s = 0
 
     async def start(self):
         """Main entry: register then poll loop."""
@@ -37,8 +41,8 @@ class Bridge:
                      f"agent_type={self.config.machine.agent_type}, "
                      f"capability={self.config.machine.agent_capability}")
 
-        registered = await self.api.register_machine()
-        if not registered:
+        await self._register_with_retry()
+        if not self.api.machine_uuid:
             logger.error("Failed to register machine, exiting")
             return
 
@@ -57,7 +61,27 @@ class Bridge:
             agent_status = "busy" if self._running_tasks > 0 else "idle"
             await self.api.update_agent_status(agent_status)
 
+            # Check if we need to re-register (consecutive 401s)
+            if self._consecutive_401s >= CONSECUTIVE_401_THRESHOLD:
+                logger.warning(f"Consecutive {self._consecutive_401s} auth failures, re-registering...")
+                self.api.machine_uuid = None
+                await self._register_with_retry()
+                if not self.api.machine_uuid:
+                    logger.warning("Re-registration failed, will retry on next cycle")
+
             await asyncio.sleep(self.config.cloud.poll_interval)
+
+    async def _register_with_retry(self):
+        """Register with exponential backoff retry."""
+        delay = REGISTER_RETRY_BASE
+        while self._running:
+            registered = await self.api.register_machine()
+            if registered:
+                self._consecutive_401s = 0
+                return
+            logger.warning(f"Registration failed, retrying in {delay}s...")
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, REGISTER_RETRY_MAX)
 
     async def _handle_task_safe(self, task: dict):
         """Handle task with concurrency limit and error safety."""
@@ -95,6 +119,13 @@ class Bridge:
 
         await self.api.submit_result(task_id, result)
 
+    def track_auth_failure(self, status_code: int | None):
+        """Track consecutive 401s for re-registration trigger."""
+        if status_code == 401:
+            self._consecutive_401s += 1
+        else:
+            self._consecutive_401s = 0
+
     def stop(self):
         logger.info("Shutting down bridge...")
         self._running = False
@@ -129,9 +160,11 @@ async def async_main():
 
     bridge = Bridge(config)
 
-    loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, bridge.stop)
+    # Signal handlers: not available on Windows, use keyboard-only Ctrl+C
+    if sys.platform != "win32":
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, bridge.stop)
 
     try:
         await bridge.start()

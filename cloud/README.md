@@ -97,7 +97,7 @@ X-API-Key: your-api-key
 | GET | `/machines/dashboard` | 仪表盘数据（含运行中任务、今日完成数） |
 | GET | `/machines/{uuid}` | 机器详情（含待执行任务数） |
 | PATCH | `/machines/{uuid}` | 更新机器状态（启用/禁用、agent状态） |
-| GET | `/machines/{uuid}/poll` | 机器轮询任务（支持 `?project_id=` 过滤） |
+| GET | `/machines/{uuid}/poll` | 机器轮询任务（自动使用机器绑定的项目） |
 
 ### 任务管理 `/api/v1/tasks`
 
@@ -127,11 +127,12 @@ X-API-Key: your-api-key
 |------|------|------|
 | `machine_id` | string | 机器唯一标识（如 `macbook-pro-office`） |
 | `machine_name` | string | 展示名称 |
-| `agent_type` | enum | 代理类型：claude_code / openclaw / hermes_agent / codex / windsurf |
+| `agent_type` | enum | 代理类型：claude_code / openclaw / hermes_agent / codex |
 | `agent_capability` | enum | 能力：remote_execution（远程执行）/ manual_only（仅提醒） |
 | `status` | enum | online / offline |
 | `is_enabled` | bool | 是否启用（禁用后不接收新任务） |
 | `agent_status` | enum | idle / busy / offline（Claude Code 执行状态） |
+| `project_id` | uuid | 归属项目（自动领取/claim 时只允许该项目任务） |
 
 ### Task（任务）
 

@@ -52,7 +52,7 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
         print("Copy config.yaml.example to config.yaml and edit it.")
         sys.exit(1)
 
-    with open(path) as f:
+    with open(path, encoding="utf-8") as f:
         raw = yaml.safe_load(f) or {}
 
     cfg = BridgeConfig(
