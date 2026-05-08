@@ -396,6 +396,59 @@ class TestApiClientMethods:
 
         assert result is True
 
+    @pytest.mark.asyncio
+    async def test_pin_task_session_success(self):
+        """Test pin_task_session returns True on success."""
+        config = create_test_config()
+        client = ApiClient(config)
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value={"success": True})
+        mock_client.request = AsyncMock(return_value=mock_response)
+        client._client = mock_client
+
+        result = await client.pin_task_session("task-123", session_id="sess-abc", work_dir="/tmp/w")
+
+        assert result is True
+        call_kwargs = mock_client.request.call_args.kwargs
+        assert call_kwargs["json"]["session_id"] == "sess-abc"
+        assert call_kwargs["json"]["work_dir"] == "/tmp/w"
+
+    @pytest.mark.asyncio
+    async def test_pin_task_session_failure(self):
+        """Test pin_task_session returns False on failure."""
+        config = create_test_config()
+        client = ApiClient(config)
+
+        mock_client = AsyncMock()
+        mock_client.request = AsyncMock(return_value=None)
+        client._client = mock_client
+
+        result = await client.pin_task_session("task-123", session_id="sess-abc")
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_get_task_returns_data(self):
+        """Test get_task returns task dict on success."""
+        config = create_test_config()
+        client = ApiClient(config)
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.raise_for_status = MagicMock()
+        mock_response.json = MagicMock(return_value={"success": True, "data": {"id": "task-123", "status": "running"}})
+        mock_client.request = AsyncMock(return_value=mock_response)
+        client._client = mock_client
+
+        result = await client.get_task("task-123")
+
+        assert result is not None
+        assert result["id"] == "task-123"
+        assert result["status"] == "running"
+
 
 class TestApiClientClose:
     """Tests for API client cleanup."""

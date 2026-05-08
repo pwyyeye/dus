@@ -35,3 +35,4 @@ alembic/versions/__pycache__/
 分布式*.md
 */pnpm-lock.yaml
 .gstack/
+multica-main/

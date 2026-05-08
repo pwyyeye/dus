@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import { fetchTask, fetchMachines, fetchProjects, updateTask, cancelTask, Machine, Project } from "@/lib/api";
+import { wsClient } from "@/lib/websocket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -92,6 +94,43 @@ export default function TaskDetailPage() {
   };
 
   const result = task?.result as { stdout?: string; stderr?: string } | null;
+
+  // Real-time terminal output via WebSocket
+  const [terminalOutput, setTerminalOutput] = useState("");
+  const terminalRef = useRef<HTMLPreElement>(null);
+  const outputInitRef = useRef(false);
+
+  useEffect(() => {
+    outputInitRef.current = false;
+    setTerminalOutput("");
+  }, [taskId]);
+
+  useEffect(() => {
+    if (task?.progress_output && !outputInitRef.current) {
+      setTerminalOutput(task.progress_output);
+      outputInitRef.current = true;
+    }
+  }, [task?.progress_output]);
+
+  useEffect(() => {
+    const unsub = wsClient.onMessage((data) => {
+      if (data.type === "task.progress") {
+        const payload = data.payload as Record<string, unknown>;
+        if (payload.id === taskId) {
+          const stdout = (payload.stdout_delta as string) || "";
+          const stderr = (payload.stderr_delta as string) || "";
+          setTerminalOutput((prev) => (prev + stdout + stderr).slice(-100000));
+        }
+      }
+    });
+    return () => { unsub(); };
+  }, [taskId]);
+
+  useEffect(() => {
+    if (terminalRef.current) {
+      terminalRef.current.scrollTop = terminalRef.current.scrollHeight;
+    }
+  }, [terminalOutput]);
 
   if (isLoading) {
     return (
@@ -186,6 +225,26 @@ export default function TaskDetailPage() {
             <p className="text-sm whitespace-pre-wrap">{task.instruction}</p>
           </CardContent>
         </Card>
+
+        {/* Real-time Terminal Output */}
+        {(task.status === "running" || terminalOutput || task.progress_output) && (
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                {task.status === "running" && <RunningAnimation />}
+                实时输出
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <pre
+                ref={terminalRef}
+                className="text-xs bg-black text-green-400 p-4 rounded-lg overflow-auto max-h-96 font-mono"
+              >
+                {terminalOutput || task.progress_output || ""}
+              </pre>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Manual Task Reminder */}
         {task.status === "pending_manual" && (

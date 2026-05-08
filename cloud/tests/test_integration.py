@@ -164,22 +164,22 @@ async def test_chain_a_remote_execution_full_flow(client, db_session):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Chain B: Windsurf Reminder Integration Test
+# Chain B: Manual-only Reminder Integration Test
 # Create manual_only device → Create task → Start Bridge → Observe pending_manual status + WeChat message received
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 @pytest.mark.asyncio
-async def test_chain_b_windsurf_reminder_flow(client, db_session):
-    """Test Chain B: Windsurf Reminder flow with manual_only capability.
+async def test_chain_b_manual_only_reminder_flow(client, db_session):
+    """Test Chain B: Manual-only Reminder flow with manual_only capability.
 
     Flow: Register manual_only machine → Create task → Trigger reminder → pending_manual + WeChat
     """
     # Step 1: Register a machine with manual_only capability
     machine_payload = {
-        "machine_id": "windsurf-machine",
-        "machine_name": "Windsurf Test Machine",
-        "agent_type": "windsurf",
+        "machine_id": "manual-machine",
+        "machine_name": "Manual Test Machine",
+        "agent_type": "claude_code",
         "agent_capability": "manual_only",
     }
     reg_response = await client.post("/api/v1/machines", json=machine_payload, headers=auth_headers())
@@ -214,7 +214,7 @@ async def test_chain_b_windsurf_reminder_flow(client, db_session):
         # Verify WeChat notification was called
         mock_wechat.assert_called_once()
         call_kwargs = mock_wechat.call_args.kwargs
-        assert "⚠️ Windsurf 手动任务提醒" in call_kwargs["title"]  # title
+        assert "⚠️ 手动任务提醒" in call_kwargs["title"]  # title
         assert "Please open project and run tests" in call_kwargs["content"]  # content
 
 
@@ -223,9 +223,9 @@ async def test_chain_b_reminder_updates_task_to_pending_manual(client, db_sessio
     """Test that reminder correctly updates task status to pending_manual."""
     # Register manual_only machine
     machine_payload = {
-        "machine_id": "windsurf-machine-2",
-        "machine_name": "Windsurf Machine 2",
-        "agent_type": "windsurf",
+        "machine_id": "manual-machine-2",
+        "machine_name": "Manual Machine 2",
+        "agent_type": "claude_code",
         "agent_capability": "manual_only",
     }
     reg_response = await client.post("/api/v1/machines", json=machine_payload, headers=auth_headers())
@@ -573,3 +573,196 @@ async def test_cancel_dispatched_task(client, db_session):
     )
     assert cancel_response.status_code == 200
     assert cancel_response.json()["data"]["status"] == "cancelled"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Issue + Session Resumption Integration Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_issue_create_and_auto_dispatch(client, db_session):
+    """Test Issue creation auto-dispatches task to assigned machine."""
+    machine_payload = {
+        "machine_id": "issue-auto-machine",
+        "machine_name": "Issue Auto Machine",
+        "agent_type": "claude_code",
+        "agent_capability": "remote_execution",
+    }
+    reg_response = await client.post("/api/v1/machines", json=machine_payload, headers=auth_headers())
+    machine_uuid = reg_response.json()["data"]["id"]
+
+    issue_payload = {
+        "title": "Fix login bug",
+        "description": "Users cannot log in with special characters",
+        "status": "todo",
+        "priority": "high",
+        "assignee_type": "machine",
+        "assignee_id": machine_uuid,
+    }
+    issue_response = await client.post("/api/v1/issues", json=issue_payload, headers=auth_headers())
+    assert issue_response.status_code == 200
+    issue_data = issue_response.json()["data"]
+    issue_uuid = issue_data["id"]
+    assert issue_data["status"] == "todo"
+
+    # Poll should return the auto-dispatched task
+    poll_response = await client.get(f"/api/v1/machines/{machine_uuid}/poll", headers=auth_headers())
+    assert poll_response.status_code == 200
+    poll_data = poll_response.json()
+    assert len(poll_data["tasks"]) == 1
+    assert poll_data["tasks"][0]["issue_id"] == issue_uuid
+
+
+@pytest.mark.asyncio
+async def test_issue_reassign_cancels_and_creates_task(client, db_session):
+    """Test reassigning an Issue cancels old task and creates new."""
+    m1 = await client.post("/api/v1/machines", json={"machine_id": "m1a", "machine_name": "M1A", "agent_type": "claude_code", "agent_capability": "remote_execution"}, headers=auth_headers())
+    m1_uuid = m1.json()["data"]["id"]
+    m2 = await client.post("/api/v1/machines", json={"machine_id": "m2a", "machine_name": "M2A", "agent_type": "claude_code", "agent_capability": "remote_execution"}, headers=auth_headers())
+    m2_uuid = m2.json()["data"]["id"]
+
+    issue = await client.post("/api/v1/issues", json={
+        "title": "Reassign test",
+        "status": "todo",
+        "assignee_type": "machine",
+        "assignee_id": m1_uuid,
+    }, headers=auth_headers())
+    issue_uuid = issue.json()["data"]["id"]
+
+    # Poll to dispatch task to m1
+    await client.get(f"/api/v1/machines/{m1_uuid}/poll", headers=auth_headers())
+
+    # Reassign to m2
+    await client.put(f"/api/v1/issues/{issue_uuid}", json={"assignee_id": m2_uuid}, headers=auth_headers())
+
+    # Verify m2 poll gets new task
+    poll2 = await client.get(f"/api/v1/machines/{m2_uuid}/poll", headers=auth_headers())
+    assert len(poll2.json()["tasks"]) == 1
+    assert poll2.json()["tasks"][0]["target_machine_id"] == m2_uuid
+
+    # Verify old task on m1 is cancelled
+    tasks_resp = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
+    tasks = tasks_resp.json()["data"]
+    assert len(tasks) == 2
+    statuses = {t["status"] for t in tasks}
+    assert statuses == {"cancelled", "dispatched"}
+
+
+@pytest.mark.asyncio
+async def test_poll_returns_prior_session_for_issue_bound_task(client, db_session):
+    """Test poll returns prior_session_id and prior_work_dir for resumed Issue tasks."""
+    machine_payload = {
+        "machine_id": "session-machine",
+        "machine_name": "Session Machine",
+        "agent_type": "claude_code",
+        "agent_capability": "remote_execution",
+    }
+    reg_response = await client.post("/api/v1/machines", json=machine_payload, headers=auth_headers())
+    machine_uuid = reg_response.json()["data"]["id"]
+
+    # Create issue assigned to machine
+    issue = await client.post("/api/v1/issues", json={
+        "title": "Session resume test",
+        "status": "todo",
+        "assignee_type": "machine",
+        "assignee_id": machine_uuid,
+    }, headers=auth_headers())
+    issue_uuid = issue.json()["data"]["id"]
+
+    # First task: poll, run, complete with session_id
+    poll1 = await client.get(f"/api/v1/machines/{machine_uuid}/poll", headers=auth_headers())
+    task1_uuid = poll1.json()["tasks"][0]["id"]
+    await client.put(f"/api/v1/tasks/{task1_uuid}", json={"status": "running"}, headers=auth_headers())
+    await client.post(f"/api/v1/tasks/{task1_uuid}/result", json={
+        "exit_code": 0,
+        "stdout": "done",
+        "stderr": "",
+        "session_id": "sess-resume-001",
+        "work_dir": "/tmp/work/issue1",
+    }, headers=auth_headers())
+
+    # Update issue to trigger new task (simulate next step)
+    await client.put(f"/api/v1/issues/{issue_uuid}", json={"status": "in_progress"}, headers=auth_headers())
+
+    # Second task poll should include prior session info
+    poll2 = await client.get(f"/api/v1/machines/{machine_uuid}/poll", headers=auth_headers())
+    tasks2 = poll2.json()["tasks"]
+    # Find the new pending task (not the completed one)
+    new_task = next((t for t in tasks2 if t["status"] == "dispatched"), None)
+    assert new_task is not None
+    assert new_task["prior_session_id"] == "sess-resume-001"
+    assert new_task["prior_work_dir"] == "/tmp/work/issue1"
+
+
+@pytest.mark.asyncio
+async def test_delete_issue_cancels_active_tasks(client, db_session):
+    """Test deleting an Issue cancels all its active tasks."""
+    m = await client.post("/api/v1/machines", json={
+        "machine_id": "del-issue-m",
+        "machine_name": "Del Issue M",
+        "agent_type": "claude_code",
+        "agent_capability": "remote_execution",
+    }, headers=auth_headers())
+    m_uuid = m.json()["data"]["id"]
+
+    issue = await client.post("/api/v1/issues", json={
+        "title": "To be deleted",
+        "status": "todo",
+        "assignee_type": "machine",
+        "assignee_id": m_uuid,
+    }, headers=auth_headers())
+    issue_uuid = issue.json()["data"]["id"]
+
+    # Dispatch the task
+    await client.get(f"/api/v1/machines/{m_uuid}/poll", headers=auth_headers())
+
+    # Delete issue
+    del_resp = await client.delete(f"/api/v1/issues/{issue_uuid}", headers=auth_headers())
+    assert del_resp.status_code == 200
+
+    # All tasks should be cancelled
+    tasks_resp = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
+    for t in tasks_resp.json()["data"]:
+        assert t["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_task_result_preserves_session_and_workdir(client, db_session):
+    """Test task result submission saves session_id and work_dir."""
+    task = await client.post("/api/v1/tasks", json={"instruction": "session test"}, headers=auth_headers())
+    task_uuid = task.json()["data"]["id"]
+
+    result = await client.post(f"/api/v1/tasks/{task_uuid}/result", json={
+        "exit_code": 0,
+        "stdout": "ok",
+        "stderr": "",
+        "session_id": "sess-xyz",
+        "work_dir": "/tmp/sess-work",
+    }, headers=auth_headers())
+    assert result.status_code == 200
+    data = result.json()["data"]
+    assert data["session_id"] == "sess-xyz"
+    assert data["work_dir"] == "/tmp/sess-work"
+    assert data["status"] == "completed"
+
+
+@pytest.mark.asyncio
+async def test_task_callback_preserves_session_and_workdir(client, db_session):
+    """Test task callback saves session_id and work_dir same as result."""
+    task = await client.post("/api/v1/tasks", json={"instruction": "callback session test"}, headers=auth_headers())
+    task_uuid = task.json()["data"]["id"]
+
+    result = await client.post(f"/api/v1/tasks/{task_uuid}/callback", json={
+        "exit_code": 1,
+        "stdout": "",
+        "stderr": "error",
+        "error_type": "execution_error",
+        "session_id": "sess-callback",
+        "work_dir": "/tmp/callback-work",
+    }, headers=auth_headers())
+    assert result.status_code == 200
+    data = result.json()["data"]
+    assert data["session_id"] == "sess-callback"
+    assert data["work_dir"] == "/tmp/callback-work"
+    assert data["status"] == "failed"

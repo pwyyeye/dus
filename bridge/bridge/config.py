@@ -1,11 +1,64 @@
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+# Agent CLI default binary names on PATH
+_DEFAULT_AGENT_BINS: dict[str, str] = {
+    "claude_code": "claude",
+    "codex": "codex",
+    "hermes_agent": "hermes",
+    "openclaw": "openclaw",
+}
+
+# Environment variable overrides for agent path
+_AGENT_PATH_ENV_VARS: dict[str, str] = {
+    "claude_code": "DUS_CLAUDE_PATH",
+    "codex": "DUS_CODEX_PATH",
+    "hermes_agent": "DUS_HERMES_PATH",
+    "openclaw": "DUS_OPENCLAW_PATH",
+}
+
+
+def detect_agent_path(agent_type: str, configured_path: str | None = None) -> str:
+    """Detect agent CLI executable path.
+
+    Resolution order (highest priority first):
+    1. Environment variable (e.g. DUS_CLAUDE_PATH)
+    2. Configured path from config.yaml (if not default/empty)
+    3. shutil.which() on PATH using default binary name
+
+    Raises SystemExit if no executable is found.
+    """
+    # 1. Env var override
+    env_var = _AGENT_PATH_ENV_VARS.get(agent_type)
+    if env_var and os.getenv(env_var):
+        env_path = os.getenv(env_var)
+        if shutil.which(env_path):
+            return env_path
+        print(f"WARNING: {env_var}={env_path} not found on PATH, falling back...")
+
+    # 2. Configured path (if explicitly set and differs from default)
+    if configured_path and configured_path != _DEFAULT_AGENT_BINS.get(agent_type, configured_path):
+        if shutil.which(configured_path):
+            return configured_path
+        print(f"WARNING: Configured agent path '{configured_path}' not found, trying PATH...")
+
+    # 3. Auto-detect from PATH
+    bin_name = _DEFAULT_AGENT_BINS.get(agent_type, agent_type)
+    detected = shutil.which(bin_name)
+    if detected:
+        return detected
+
+    print(f"ERROR: No agent CLI found for '{agent_type}'.")
+    print(f"  Tried: {env_var or '(no env var)'}, config path, '{bin_name}' on PATH")
+    print(f"  Install the agent CLI or set {env_var} to the full path.")
+    sys.exit(1)
 
 
 @dataclass
@@ -37,11 +90,26 @@ class LoggingConfig:
 
 
 @dataclass
+class HealthConfig:
+    port: int = 19514
+
+
+@dataclass
+class GCConfig:
+    enabled: bool = True
+    interval: int = 3600
+    ttl: int = 86400
+
+
+@dataclass
 class BridgeConfig:
     machine: MachineConfig = field(default_factory=MachineConfig)
     cloud: CloudConfig = field(default_factory=CloudConfig)
     agent: AgentConfig = field(default_factory=AgentConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    health: HealthConfig = field(default_factory=HealthConfig)
+    gc: GCConfig = field(default_factory=GCConfig)
+    max_concurrent_tasks: int = 3
 
 
 def load_config(config_path: str = "config.yaml") -> BridgeConfig:
@@ -60,7 +128,13 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
         cloud=CloudConfig(**(raw.get("cloud", {}))),
         agent=AgentConfig(**(raw.get("agent", {}))),
         logging=LoggingConfig(**(raw.get("logging", {}))),
+        health=HealthConfig(**(raw.get("health", {}))),
+        gc=GCConfig(**(raw.get("gc", {}))),
     )
+
+    # Top-level overrides
+    if "max_concurrent_tasks" in raw:
+        cfg.max_concurrent_tasks = raw["max_concurrent_tasks"]
 
     # Environment variable overrides
     if os.getenv("DUS_API_KEY"):
@@ -69,6 +143,8 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
         cfg.cloud.api_url = os.getenv("DUS_API_URL")
     if os.getenv("DUS_MACHINE_ID"):
         cfg.machine.machine_id = os.getenv("DUS_MACHINE_ID")
+    if os.getenv("DUS_HEALTH_PORT"):
+        cfg.health.port = int(os.getenv("DUS_HEALTH_PORT"))
 
     # Validate required fields
     for field_name, value in [
@@ -79,5 +155,8 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
         if value == "CHANGE_ME":
             print(f"ERROR: Please set '{field_name}' in config.yaml (currently 'CHANGE_ME')")
             sys.exit(1)
+
+    # Auto-detect agent CLI path if not explicitly set or not found
+    cfg.agent.path = detect_agent_path(cfg.machine.agent_type, cfg.agent.path)
 
     return cfg

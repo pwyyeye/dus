@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import platform
+
 import httpx
 from loguru import logger
 
@@ -9,12 +11,27 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2.0
 
 
+def _normalize_os() -> str:
+    """Map Python's platform.system() to protocol vocabulary."""
+    sysname = platform.system()
+    mapping = {"Darwin": "macos", "Windows": "windows", "Linux": "linux"}
+    return mapping.get(sysname, sysname.lower())
+
+
 class ApiClient:
-    """Cloud API client with retry logic."""
+    """Cloud API client with retry logic and client identity headers."""
 
     def __init__(self, config: BridgeConfig):
         self.base_url = config.cloud.api_url.rstrip("/")
-        self.headers = {"X-API-Key": config.cloud.api_key}
+        self.headers = {
+            "X-API-Key": config.cloud.api_key,
+            "X-Client-Platform": "bridge",
+            "X-Client-OS": _normalize_os(),
+        }
+        # Append version if available
+        version = getattr(config, "_version", "")
+        if version:
+            self.headers["X-Client-Version"] = version
         self.machine_config = config.machine
         self._client = httpx.AsyncClient(
             timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0),
@@ -92,13 +109,42 @@ class ApiClient:
         return bool(result and result.get("success"))
 
     async def submit_result(self, task_id: str, result_data: dict) -> bool:
-        """Submit execution result."""
+        """Submit execution result (optionally includes session_id and work_dir)."""
         result = await self._request("POST", f"/tasks/{task_id}/result", json=result_data)
         return bool(result and result.get("success"))
+
+    async def pin_task_session(self, task_id: str, session_id: str | None = None, work_dir: str | None = None) -> bool:
+        """Pin session_id and work_dir mid-run for crash recovery (Multica-inspired)."""
+        payload = {}
+        if session_id is not None:
+            payload["session_id"] = session_id
+        if work_dir is not None:
+            payload["work_dir"] = work_dir
+        if not payload:
+            return True
+        result = await self._request("PUT", f"/tasks/{task_id}/pin", json=payload)
+        return bool(result and result.get("success"))
+
+    async def get_task(self, task_id: str) -> dict | None:
+        """Get task details by ID."""
+        result = await self._request("GET", f"/tasks/{task_id}")
+        return result.get("data") if result else None
 
     async def send_reminder(self, task_id: str) -> bool:
         """Trigger reminder for manual_only tasks."""
         result = await self._request("POST", f"/tasks/{task_id}/remind")
+        return bool(result and result.get("success"))
+
+    async def submit_progress(self, task_id: str, stdout_delta: str, stderr_delta: str) -> bool:
+        """Submit incremental stdout/stderr during task execution."""
+        payload: dict[str, str | int | None] = {}
+        if stdout_delta:
+            payload["stdout_delta"] = stdout_delta
+        if stderr_delta:
+            payload["stderr_delta"] = stderr_delta
+        if not payload:
+            return True
+        result = await self._request("POST", f"/tasks/{task_id}/progress", json=payload)
         return bool(result and result.get("success"))
 
     async def update_agent_status(self, agent_status: str) -> bool:

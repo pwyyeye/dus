@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
 import { Sidebar } from "@/components/sidebar";
+import { RealtimeProvider } from "@/components/realtime-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -31,8 +32,10 @@ export default function RootLayout({
     >
       <body className="min-h-full flex">
         <Providers>
-          <Sidebar />
-          <main className="flex-1 overflow-auto p-6">{children}</main>
+          <RealtimeProvider>
+            <Sidebar />
+            <main className="flex-1 overflow-auto p-6">{children}</main>
+          </RealtimeProvider>
         </Providers>
       </body>
     </html>

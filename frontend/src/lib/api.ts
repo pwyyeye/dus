@@ -55,11 +55,28 @@ export interface Task {
   status: "pending" | "dispatched" | "running" | "completed" | "failed" | "cancelled" | "pending_manual";
   project_id: string | null;
   target_machine_id: string | null;
+  issue_id: string | null;
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
   result: Record<string, unknown>;
   error_message: string | null;
+  progress_output: string | null;
+}
+
+export interface Issue {
+  id: string;
+  issue_id: string;
+  title: string;
+  description: string | null;
+  status: "todo" | "in_progress" | "done" | "cancelled";
+  priority: "low" | "medium" | "high" | "urgent";
+  assignee_type: string | null;
+  assignee_id: string | null;
+  project_id: string | null;
+  created_at: string;
+  updated_at: string;
+  tasks?: Task[];
 }
 
 export interface Project {
@@ -79,6 +96,7 @@ interface ApiResponse<T> {
   success: boolean;
   data: T;
   message: string;
+  meta?: Record<string, unknown>;
 }
 
 // ── Machine API ──
@@ -200,6 +218,73 @@ export async function createProject(data: {
     method: "POST",
     body: JSON.stringify(data),
   });
+  return res.data;
+}
+
+// ── Issue API ──
+
+export async function fetchIssues(params?: {
+  status?: string;
+  project_id?: string;
+  assignee_id?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<{ issues: Issue[]; total: number }> {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.project_id) query.set("project_id", params.project_id);
+  if (params?.assignee_id) query.set("assignee_id", params.assignee_id);
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.offset) query.set("offset", String(params.offset));
+  const qs = query.toString();
+  const res = await request<ApiResponse<Issue[]>>(`/issues${qs ? `?${qs}` : ""}`);
+  const total = typeof res.meta?.total === "number" ? res.meta.total : res.data.length;
+  return { issues: res.data, total };
+}
+
+export async function fetchIssue(id: string): Promise<Issue> {
+  const res = await request<ApiResponse<Issue>>(`/issues/${id}`);
+  return res.data;
+}
+
+export async function createIssue(data: {
+  title: string;
+  description?: string;
+  status?: string;
+  priority?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+  project_id?: string;
+}): Promise<Issue> {
+  const res = await request<ApiResponse<Issue>>("/issues", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function updateIssue(id: string, data: {
+  title?: string;
+  description?: string;
+  status?: string;
+  priority?: string;
+  assignee_type?: string;
+  assignee_id?: string;
+  project_id?: string;
+}): Promise<Issue> {
+  const res = await request<ApiResponse<Issue>>(`/issues/${id}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+  return res.data;
+}
+
+export async function deleteIssue(id: string): Promise<void> {
+  await request<ApiResponse<void>>(`/issues/${id}`, { method: "DELETE" });
+}
+
+export async function fetchIssueTasks(id: string): Promise<Task[]> {
+  const res = await request<ApiResponse<Task[]>>(`/issues/${id}/tasks`);
   return res.data;
 }
 

@@ -21,6 +21,7 @@ cloud/
 ├── routers/
 │   ├── machines.py      # 机器管理 API
 │   ├── tasks.py         # 任务管理 API
+│   ├── issues.py        # Issue 管理 API
 │   └── projects.py      # 项目管理 API
 ├── alembic.ini          # Alembic 配置
 └── .env                 # 环境变量
@@ -97,19 +98,33 @@ X-API-Key: your-api-key
 | GET | `/machines/dashboard` | 仪表盘数据（含运行中任务、今日完成数） |
 | GET | `/machines/{uuid}` | 机器详情（含待执行任务数） |
 | PATCH | `/machines/{uuid}` | 更新机器状态（启用/禁用、agent状态） |
-| GET | `/machines/{uuid}/poll` | 机器轮询任务（自动使用机器绑定的项目） |
+| GET | `/machines/{uuid}/poll` | 机器轮询任务（含 Issue 上下文和 session 恢复信息） |
 
 ### 任务管理 `/api/v1/tasks`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/tasks` | 创建任务 |
+| POST | `/tasks` | 创建任务（支持关联 Issue） |
 | GET | `/tasks` | 任务列表（支持 status、project_id、target_machine_id 过滤） |
 | GET | `/tasks/{uuid}` | 任务详情 |
 | PUT | `/tasks/{uuid}` | 更新任务状态 |
 | POST | `/tasks/{uuid}/callback` | 设备回调上报结果（Hook） |
-| POST | `/tasks/{uuid}/result` | 提交任务执行结果（Bridge 调用） |
+| POST | `/tasks/{uuid}/result` | 提交任务执行结果（含 session_id/work_dir） |
+| PUT | `/tasks/{uuid}/pin` | 运行时固定 session_id 和 work_dir（用于崩溃恢复） |
 | POST | `/tasks/{uuid}/remind` | 触发手动任务提醒 |
+
+### Issue 管理 `/api/v1/issues`
+
+Issue 是工作单元，Task 是执行单元。一个 Issue 可包含多个 Task（执行历史）。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/issues` | 创建 Issue（分配机器时自动派发 Task） |
+| GET | `/issues` | Issue 列表（支持 status、project_id、assignee_id 过滤） |
+| GET | `/issues/{uuid}` | Issue 详情（含执行历史 tasks） |
+| PUT | `/issues/{uuid}` | 更新 Issue（改分配时自动取消旧 Task、创建新 Task） |
+| DELETE | `/issues/{uuid}` | 删除 Issue（级联取消活跃 Task） |
+| GET | `/issues/{uuid}/tasks` | 获取 Issue 的执行历史 |
 
 ### 项目管理 `/api/v1/projects`
 
@@ -118,6 +133,28 @@ X-API-Key: your-api-key
 | POST | `/projects` | 创建项目 |
 | GET | `/projects` | 项目列表（含空闲时长） |
 | PUT | `/projects/{uuid}` | 更新项目设置 |
+
+## 核心概念
+
+### Issue-Task 分层模型
+
+- **Issue** = 工作单元（如 "修复登录 bug"），包含标题、描述、状态、优先级、负责人
+- **Task** = 执行单元（一次具体的远程执行），包含指令、执行结果、session 信息
+- 一个 Issue 可产生多个 Task（改分配时取消旧 Task、创建新 Task；同一 Issue 多次执行）
+
+### Session Resumption（会话恢复）
+
+借鉴 Multica 的 session pinning 机制：
+
+1. Bridge 执行任务时，Claude Code 可通过 `--resume <session_id>` 恢复之前的对话上下文
+2. 任务完成后，Bridge 将 `session_id` 和 `work_dir` 随结果提交回 Cloud
+3. 下次该 Issue 产生新 Task 时，Cloud 在 poll 响应中返回 `prior_session_id` 和 `prior_work_dir`
+4. Bridge 使用这些信息恢复 Claude Code 会话，保持工作连续性
+
+API 支持：
+- `POST /tasks/{uuid}/result` / `callback` — 接受 `session_id` 和 `work_dir`
+- `PUT /tasks/{uuid}/pin` — 运行中固定 session（崩溃恢复）
+- `GET /machines/{uuid}/poll` — 返回 `prior_session_id` / `prior_work_dir`
 
 ## 数据模型
 
@@ -141,9 +178,25 @@ X-API-Key: your-api-key
 | `instruction` | string | 执行指令（核心字段） |
 | `project_id` | uuid | 关联的项目 |
 | `target_machine_id` | uuid | 指定的执行设备 |
-| `status` | enum | pending / dispatched / running / completed / failed / cancelled |
+| `issue_id` | uuid | 关联的 Issue |
+| `status` | enum | pending / dispatched / running / completed / failed / cancelled / pending_manual |
 | `result` | json | 执行结果：{exit_code, stdout, stderr, error_type} |
 | `error_message` | string | 错误信息 |
+| `session_id` | string | Claude Code 会话 ID（用于恢复） |
+| `work_dir` | string | 工作目录（用于恢复） |
+
+### Issue（工作项）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `issue_id` | string | 可读唯一标识（如 `issue-a1b2c3d4`） |
+| `title` | string | 标题 |
+| `description` | string | 描述 |
+| `status` | enum | todo / in_progress / done / cancelled |
+| `priority` | enum | low / medium / high / urgent |
+| `assignee_type` | string | 负责人类型（如 `machine`） |
+| `assignee_id` | uuid | 负责人 ID |
+| `project_id` | uuid | 关联项目 |
 
 ### Project（项目）
 

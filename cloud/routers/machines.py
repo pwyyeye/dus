@@ -21,6 +21,7 @@ from schemas import (
     MachineDashboardResponse,
     TaskListResponse,
 )
+from connection_manager import manager as ws_manager
 
 router = APIRouter(prefix="/machines", tags=["machines"])
 
@@ -69,6 +70,14 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
         db.add(machine)
 
     await db.flush()
+
+    try:
+        await ws_manager.broadcast(
+            "machine.updated",
+            {"id": str(machine.id), "status": machine.status, "machine_id": machine.machine_id},
+        )
+    except Exception:
+        pass
 
     return ApiResponse(
         data=MachineListResponse.model_validate(machine).model_dump(mode="json"),
@@ -196,6 +205,14 @@ async def update_machine(
 
     await db.flush()
 
+    try:
+        await ws_manager.broadcast(
+            "machine.updated",
+            {"id": str(machine.id), "status": machine.status, "machine_id": machine.machine_id, "agent_status": machine.agent_status},
+        )
+    except Exception:
+        pass
+
     return ApiResponse(
         data=MachineListResponse.model_validate(machine).model_dump(mode="json"),
         message="Machine updated successfully",
@@ -239,10 +256,32 @@ async def poll_tasks(
 
     poll_tasks_out: list[PollTaskResponse] = []
 
+    # Helper: resolve prior session for issue-bound tasks
+    async def resolve_prior_session(issue_id: uuid.UUID | None) -> tuple[str | None, str | None]:
+        if not issue_id:
+            return None, None
+        from sqlalchemy import select as sa_select
+        prior_stmt = (
+            sa_select(Task)
+            .where(
+                Task.issue_id == issue_id,
+                Task.status.in_(["completed", "failed"]),
+                Task.session_id.is_not(None),
+            )
+            .order_by(Task.completed_at.desc())
+            .limit(1)
+        )
+        prior_result = await db.execute(prior_stmt)
+        prior_task = prior_result.scalar_one_or_none()
+        if prior_task:
+            return prior_task.session_id, prior_task.work_dir
+        return None, None
+
     # Claim unassigned tasks
     for task in unassigned_tasks:
         task.target_machine_id = machine.id
         task.status = "dispatched"
+        prior_session, prior_workdir = await resolve_prior_session(task.issue_id)
         poll_tasks_out.append(
             PollTaskResponse(
                 id=task.id,
@@ -251,12 +290,16 @@ async def poll_tasks(
                 status="dispatched",
                 project_id=task.project_id,
                 agent_capability=machine.agent_capability,
+                issue_id=task.issue_id,
+                prior_session_id=prior_session,
+                prior_work_dir=prior_workdir,
             )
         )
 
     # Pre-assigned tasks
     for task in assigned_tasks:
         task.status = "dispatched"
+        prior_session, prior_workdir = await resolve_prior_session(task.issue_id)
         poll_tasks_out.append(
             PollTaskResponse(
                 id=task.id,
@@ -265,8 +308,21 @@ async def poll_tasks(
                 status="dispatched",
                 project_id=task.project_id,
                 agent_capability=machine.agent_capability,
+                issue_id=task.issue_id,
+                prior_session_id=prior_session,
+                prior_work_dir=prior_workdir,
             )
         )
+
+    # Broadcast task status changes caused by poll
+    for pt in poll_tasks_out:
+        try:
+            await ws_manager.broadcast(
+                "task.updated",
+                {"id": str(pt.id), "status": pt.status, "task_id": pt.task_id},
+            )
+        except Exception:
+            pass
 
     return PollResponse(
         machine=MachineListResponse.model_validate(machine),

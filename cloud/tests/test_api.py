@@ -414,7 +414,7 @@ async def test_trigger_reminder(client, db_session):
         json={
             "machine_id": "remind-test-machine",
             "machine_name": "Remind Test Machine",
-            "agent_type": "windsurf",
+            "agent_type": "claude_code",
             "agent_capability": "manual_only",
         },
         headers=auth_headers(),
@@ -555,3 +555,291 @@ async def test_api_with_short_key_fails(client, db_session):
     """Test API requests with too-short API key fail."""
     response = await client.get("/api/v1/machines", headers={"X-API-Key": "short"})
     assert response.status_code == 401
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Issue API Tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_create_issue(client, db_session):
+    """Test POST /api/v1/issues - create a new issue."""
+    payload = {
+        "title": "Test Issue",
+        "description": "Issue description",
+        "status": "todo",
+        "priority": "high",
+    }
+    response = await client.post("/api/v1/issues", json=payload, headers=auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["title"] == "Test Issue"
+    assert data["data"]["status"] == "todo"
+    assert data["data"]["priority"] == "high"
+    assert data["data"]["issue_id"].startswith("issue-")
+
+
+@pytest.mark.asyncio
+async def test_create_issue_auto_dispatch_task(client, db_session):
+    """Test POST /api/v1/issues - auto-dispatches task when assigned to machine."""
+    # Register a machine first
+    reg_response = await client.post(
+        "/api/v1/machines",
+        json={
+            "machine_id": "issue-machine-001",
+            "machine_name": "Issue Test Machine",
+            "agent_type": "claude_code",
+            "agent_capability": "remote_execution",
+        },
+        headers=auth_headers(),
+    )
+    machine_uuid = reg_response.json()["data"]["id"]
+
+    payload = {
+        "title": "Auto-dispatch Issue",
+        "description": "Please fix the bug",
+        "status": "todo",
+        "priority": "medium",
+        "assignee_type": "machine",
+        "assignee_id": machine_uuid,
+    }
+    response = await client.post("/api/v1/issues", json=payload, headers=auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+
+    # Verify a task was auto-created
+    issue_uuid = data["data"]["id"]
+    tasks_response = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
+    tasks_data = tasks_response.json()["data"]
+    assert len(tasks_data) == 1
+    assert tasks_data[0]["status"] == "pending"
+    assert tasks_data[0]["target_machine_id"] == machine_uuid
+
+
+@pytest.mark.asyncio
+async def test_list_issues(client, db_session):
+    """Test GET /api/v1/issues - list issues."""
+    await client.post(
+        "/api/v1/issues",
+        json={"title": "Issue 1", "status": "todo", "priority": "low"},
+        headers=auth_headers(),
+    )
+    await client.post(
+        "/api/v1/issues",
+        json={"title": "Issue 2", "status": "in_progress", "priority": "high"},
+        headers=auth_headers(),
+    )
+    response = await client.get("/api/v1/issues", headers=auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert isinstance(data["data"], list)
+    assert len(data["data"]) >= 2
+    assert "meta" in data
+    assert "total" in data["meta"]
+
+
+@pytest.mark.asyncio
+async def test_list_issues_with_status_filter(client, db_session):
+    """Test GET /api/v1/issues - filter by status."""
+    await client.post(
+        "/api/v1/issues",
+        json={"title": "Todo Issue", "status": "todo", "priority": "low"},
+        headers=auth_headers(),
+    )
+    response = await client.get("/api/v1/issues?status=todo", headers=auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    for issue in data["data"]:
+        assert issue["status"] == "todo"
+
+
+@pytest.mark.asyncio
+async def test_get_issue_details(client, db_session):
+    """Test GET /api/v1/issues/{uuid} - get issue details with tasks."""
+    create_response = await client.post(
+        "/api/v1/issues",
+        json={"title": "Detail Issue", "status": "todo", "priority": "medium"},
+        headers=auth_headers(),
+    )
+    issue_uuid = create_response.json()["data"]["id"]
+
+    response = await client.get(f"/api/v1/issues/{issue_uuid}", headers=auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["success"] is True
+    assert data["data"]["title"] == "Detail Issue"
+    assert "tasks" in data["data"]
+
+
+@pytest.mark.asyncio
+async def test_update_issue(client, db_session):
+    """Test PUT /api/v1/issues/{uuid} - update issue."""
+    create_response = await client.post(
+        "/api/v1/issues",
+        json={"title": "Original Title", "status": "todo", "priority": "low"},
+        headers=auth_headers(),
+    )
+    issue_uuid = create_response.json()["data"]["id"]
+
+    response = await client.put(
+        f"/api/v1/issues/{issue_uuid}",
+        json={"title": "Updated Title", "priority": "urgent"},
+        headers=auth_headers(),
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["data"]["title"] == "Updated Title"
+    assert data["data"]["priority"] == "urgent"
+
+
+@pytest.mark.asyncio
+async def test_update_issue_reconcile_tasks(client, db_session):
+    """Test PUT /api/v1/issues - reassigning cancels old task and creates new."""
+    # Register two machines
+    reg1 = await client.post(
+        "/api/v1/machines",
+        json={"machine_id": "m1", "machine_name": "M1", "agent_type": "claude_code", "agent_capability": "remote_execution"},
+        headers=auth_headers(),
+    )
+    m1_uuid = reg1.json()["data"]["id"]
+    reg2 = await client.post(
+        "/api/v1/machines",
+        json={"machine_id": "m2", "machine_name": "M2", "agent_type": "claude_code", "agent_capability": "remote_execution"},
+        headers=auth_headers(),
+    )
+    m2_uuid = reg2.json()["data"]["id"]
+
+    # Create issue assigned to m1
+    create_response = await client.post(
+        "/api/v1/issues",
+        json={
+            "title": "Reconcile Test",
+            "status": "todo",
+            "priority": "medium",
+            "assignee_type": "machine",
+            "assignee_id": m1_uuid,
+        },
+        headers=auth_headers(),
+    )
+    issue_uuid = create_response.json()["data"]["id"]
+
+    # Reassign to m2
+    await client.put(
+        f"/api/v1/issues/{issue_uuid}",
+        json={"assignee_id": m2_uuid},
+        headers=auth_headers(),
+    )
+
+    # Verify old task cancelled and new task created
+    tasks_response = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
+    tasks = tasks_response.json()["data"]
+    assert len(tasks) == 2
+    statuses = [t["status"] for t in tasks]
+    assert "cancelled" in statuses
+    assert "pending" in statuses
+
+
+@pytest.mark.asyncio
+async def test_delete_issue_cancels_tasks(client, db_session):
+    """Test DELETE /api/v1/issues - cascades cancellation to tasks."""
+    reg = await client.post(
+        "/api/v1/machines",
+        json={"machine_id": "del-m", "machine_name": "Del M", "agent_type": "claude_code", "agent_capability": "remote_execution"},
+        headers=auth_headers(),
+    )
+    m_uuid = reg.json()["data"]["id"]
+
+    create_response = await client.post(
+        "/api/v1/issues",
+        json={
+            "title": "Delete Test",
+            "status": "todo",
+            "assignee_type": "machine",
+            "assignee_id": m_uuid,
+        },
+        headers=auth_headers(),
+    )
+    issue_uuid = create_response.json()["data"]["id"]
+
+    # Delete issue
+    response = await client.delete(f"/api/v1/issues/{issue_uuid}", headers=auth_headers())
+    assert response.status_code == 200
+
+    # Verify tasks are cancelled
+    tasks_response = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
+    tasks = tasks_response.json()["data"]
+    for t in tasks:
+        assert t["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_create_task_with_issue_id(client, db_session):
+    """Test POST /api/v1/tasks - create task linked to an issue."""
+    issue_response = await client.post(
+        "/api/v1/issues",
+        json={"title": "Linked Issue", "status": "todo", "priority": "medium"},
+        headers=auth_headers(),
+    )
+    issue_uuid = issue_response.json()["data"]["id"]
+
+    task_payload = {
+        "instruction": "Task for issue",
+        "issue_id": issue_uuid,
+    }
+    response = await client.post("/api/v1/tasks", json=task_payload, headers=auth_headers())
+    assert response.status_code == 200
+    data = response.json()
+    assert data["data"]["issue_id"] == issue_uuid
+
+
+@pytest.mark.asyncio
+async def test_submit_result_with_session_and_workdir(client, db_session):
+    """Test POST /api/v1/tasks/{uuid}/result - saves session_id and work_dir."""
+    create_response = await client.post(
+        "/api/v1/tasks",
+        json={"instruction": "Session test task"},
+        headers=auth_headers(),
+    )
+    task_uuid = create_response.json()["data"]["id"]
+
+    result_payload = {
+        "exit_code": 0,
+        "stdout": "done",
+        "stderr": "",
+        "session_id": "sess-abc123",
+        "work_dir": "/tmp/work/123",
+    }
+    response = await client.post(
+        f"/api/v1/tasks/{task_uuid}/result",
+        json=result_payload,
+        headers=auth_headers(),
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["session_id"] == "sess-abc123"
+    assert data["work_dir"] == "/tmp/work/123"
+
+
+@pytest.mark.asyncio
+async def test_pin_task_session(client, db_session):
+    """Test PUT /api/v1/tasks/{uuid}/pin - mid-run session pinning."""
+    create_response = await client.post(
+        "/api/v1/tasks",
+        json={"instruction": "Pin test task"},
+        headers=auth_headers(),
+    )
+    task_uuid = create_response.json()["data"]["id"]
+
+    response = await client.put(
+        f"/api/v1/tasks/{task_uuid}/pin",
+        json={"session_id": "sess-midrun", "work_dir": "/tmp/mid"},
+        headers=auth_headers(),
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["session_id"] == "sess-midrun"
+    assert data["work_dir"] == "/tmp/mid"

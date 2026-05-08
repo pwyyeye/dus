@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import uuid
 from datetime import datetime, timezone
 
@@ -63,7 +65,7 @@ class Machine(Base):
     registered_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="target_machine")
-    project: Mapped[Project | None] = relationship()
+    project: Mapped["Project | None"] = relationship()
 
     __table_args__ = (
         Index("idx_machines_status", "status"),
@@ -85,6 +87,33 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="project")
+    issues: Mapped[list["Issue"]] = relationship(back_populates="project")
+
+
+class Issue(Base):
+    __tablename__ = "issues"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(), primary_key=True, default=uuid.uuid4)
+    issue_id: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="todo")
+    priority: Mapped[str] = mapped_column(String(20), default="medium")
+    assignee_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    assignee_id: Mapped[uuid.UUID | None] = mapped_column(UUID(), nullable=True)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(), ForeignKey("projects.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+    project: Mapped[Project | None] = relationship(back_populates="issues")
+    tasks: Mapped[list["Task"]] = relationship(back_populates="issue")
+
+    __table_args__ = (
+        Index("idx_issues_status", "status"),
+        Index("idx_issues_project", "project_id"),
+    )
 
 
 class Task(Base):
@@ -104,6 +133,9 @@ class Task(Base):
     template_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(), ForeignKey("templates.id"), nullable=True
     )
+    issue_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(), ForeignKey("issues.id"), nullable=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -111,15 +143,23 @@ class Task(Base):
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Session resumption fields (inspired by Multica PinTaskSession)
+    session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    work_dir: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # Real-time progress output (streaming stdout/stderr during execution)
+    progress_output: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     target_machine: Mapped[Machine | None] = relationship(back_populates="tasks")
     project: Mapped[Project | None] = relationship(back_populates="tasks")
     template: Mapped["TaskTemplate | None"] = relationship(back_populates="tasks")
+    issue: Mapped["Issue | None"] = relationship(back_populates="tasks")
 
     __table_args__ = (
         Index("idx_tasks_status", "status"),
         Index("idx_tasks_target", "target_machine_id"),
         Index("idx_tasks_project", "project_id"),
         Index("idx_tasks_template", "template_id"),
+        Index("idx_tasks_issue", "issue_id"),
     )
 
 

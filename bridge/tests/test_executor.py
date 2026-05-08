@@ -9,11 +9,18 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "bridge"))
 
-from bridge.executor import ClaudeCodeExecutor, StubExecutor, get_executor
+from bridge.executor import ClaudeCodeExecutor, StubExecutor, get_executor, _resolve_executable
 
 
 class TestClaudeCodeExecutor:
     """Tests for ClaudeCodeExecutor return structure."""
+
+    def setup_method(self):
+        self._resolve_patch = patch("bridge.executor._resolve_executable", return_value=("claude", False))
+        self._resolve_patch.start()
+
+    def teardown_method(self):
+        self._resolve_patch.stop()
 
     @pytest.mark.asyncio
     async def test_execute_success_returns_correct_structure(self):
@@ -70,6 +77,7 @@ class TestClaudeCodeExecutor:
         # First communicate() raises TimeoutError (simulating wait_for timeout)
         # Second communicate() (after kill) returns normally
         mock_proc.communicate = AsyncMock(side_effect=[asyncio.TimeoutError, (b"", b"")])
+        mock_proc.returncode = None
         mock_proc.kill = MagicMock()
 
         executor = ClaudeCodeExecutor(agent_path="claude", timeout=3600)
@@ -126,8 +134,8 @@ class TestClaudeCodeExecutor:
             # Verify create_subprocess_exec was called with the instruction
             mock_create.assert_called_once()
             call_args = mock_create.call_args
-            # The instruction is passed as the third argument
-            assert "Say hello" in call_args[0]
+            # The instruction is passed inside the cmd tuple
+            assert any("Say hello" in str(arg) for arg in call_args[0])
 
     @pytest.mark.asyncio
     async def test_execute_passes_workdir_to_subprocess(self):
@@ -165,6 +173,39 @@ class TestClaudeCodeExecutor:
             env = call_kwargs.get("env", {})
             assert "NO_COLOR" in env
             assert env["NO_COLOR"] == "1"
+
+    @pytest.mark.asyncio
+    async def test_execute_uses_prior_work_dir(self):
+        """Test execution prefers prior_work_dir over workdir."""
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+        mock_proc.returncode = 0
+        mock_proc.kill = MagicMock()
+
+        executor = ClaudeCodeExecutor(agent_path="claude", timeout=3600)
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_create:
+            await executor.execute("test", workdir="/tmp/new", prior_work_dir="/tmp/prior")
+
+            call_kwargs = mock_create.call_args[1]
+            assert call_kwargs.get("cwd") == "/tmp/prior"
+
+    @pytest.mark.asyncio
+    async def test_execute_passes_prior_session_id(self):
+        """Test execution passes --resume with prior_session_id."""
+        mock_proc = AsyncMock()
+        mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+        mock_proc.returncode = 0
+        mock_proc.kill = MagicMock()
+
+        executor = ClaudeCodeExecutor(agent_path="claude", timeout=3600)
+
+        with patch("asyncio.create_subprocess_exec", return_value=mock_proc) as mock_create:
+            await executor.execute("test instruction", workdir="/tmp", prior_session_id="sess-123")
+
+            call_args = mock_create.call_args[0]
+            assert "--resume" in call_args[0]
+            assert "sess-123" in call_args[0]
 
 
 class TestStubExecutor:

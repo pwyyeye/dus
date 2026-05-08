@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 
 from config import get_settings
-from routers import machines, tasks, projects, templates
+from routers import machines, tasks, projects, templates, issues, ws
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -87,3 +87,6 @@ app.include_router(machines.router, prefix="/api/v1", dependencies=[Security(ver
 app.include_router(tasks.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
 app.include_router(projects.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
 app.include_router(templates.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(issues.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+# WebSocket router (no HTTP prefix; auth handled inside the endpoint)
+app.include_router(ws.router)

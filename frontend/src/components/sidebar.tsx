@@ -9,6 +9,7 @@ const navItems = [
   { href: "/devices", label: "设备仪表盘", icon: "📈" },
   { href: "/machines", label: "设备管理", icon: "🖥️" },
   { href: "/tasks", label: "任务管理", icon: "📋" },
+  { href: "/issues", label: "Issue管理", icon: "🎫" },
   { href: "/projects", label: "项目管理", icon: "📁" },
 ];
 

@@ -14,9 +14,26 @@ cloud:
   poll_interval: 60                          # seconds
 
 agent:
-  path: "claude"                             # agent executable path
+  # Agent CLI path resolution order (highest priority first):
+  #   1. Environment variable  (e.g. DUS_CLAUDE_PATH)
+  #   2. Configured path below (if set and differs from default)
+  #   3. Auto-detect via PATH   (claude, codex, hermes, openclaw)
+  #
+  # Leave as default binary name (e.g. "claude") to auto-detect from PATH.
+  path: "claude"
   workdir_template: "/tmp/dus_task_{task_id}"
   timeout: 3600
+
+health:
+  port: 19514                                 # local HTTP health port (0 to disable)
+
+gc:
+  enabled: true                               # periodic workspace cleanup
+  interval: 3600                              # GC scan interval in seconds
+  ttl: 86400                                  # delete workdirs older than this (seconds)
+
+# Maximum concurrent tasks running in parallel
+max_concurrent_tasks: 3
 
 logging:
   level: "INFO"

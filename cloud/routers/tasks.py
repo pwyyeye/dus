@@ -8,17 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from database import get_db
-from models import Task, Machine
+from models import Task, Machine, Issue
 from notifier import send_wechat_markdown
 from schemas import (
     TaskCreate,
     TaskUpdate,
     TaskResultSubmit,
+    TaskProgressSubmit,
     TaskResponse,
     TaskListResponse,
     TaskStatus,
     ApiResponse,
 )
+from connection_manager import manager as ws_manager
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -37,14 +39,30 @@ async def create_task(payload: TaskCreate, db: AsyncSession = Depends(get_db)):
         if not machine:
             raise HTTPException(status_code=400, detail="Target machine not found")
 
+    if payload.issue_id:
+        stmt = select(Issue).where(Issue.id == payload.issue_id)
+        result = await db.execute(stmt)
+        issue = result.scalar_one_or_none()
+        if not issue:
+            raise HTTPException(status_code=400, detail="Issue not found")
+
     task = Task(
         task_id=_generate_task_id(),
         instruction=payload.instruction,
         target_machine_id=payload.target_machine_id,
         project_id=payload.project_id,
+        issue_id=payload.issue_id,
     )
     db.add(task)
     await db.flush()
+
+    try:
+        await ws_manager.broadcast(
+            "task.created",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
 
     return ApiResponse(
         data=TaskResponse.model_validate(task).model_dump(mode="json"),
@@ -147,6 +165,14 @@ async def update_task(
         elif new_status in ("completed", "failed", "cancelled"):
             task.completed_at = now
 
+    try:
+        await ws_manager.broadcast(
+            "task.updated",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
+
     return ApiResponse(
         data=TaskResponse.model_validate(task).model_dump(mode="json"),
         message="Task updated successfully",
@@ -172,12 +198,24 @@ async def submit_result(
         "stderr": payload.stderr,
         "error_type": payload.error_type,
     }
+    if payload.session_id is not None:
+        task.session_id = payload.session_id
+    if payload.work_dir is not None:
+        task.work_dir = payload.work_dir
 
     if payload.error_type:
         task.status = "failed"
         task.error_message = payload.stderr or payload.error_type
     else:
         task.status = "completed"
+
+    try:
+        await ws_manager.broadcast(
+            "task.updated",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
 
     return ApiResponse(
         data=TaskResponse.model_validate(task).model_dump(mode="json"),
@@ -206,6 +244,10 @@ async def task_callback(
         "stderr": payload.stderr,
         "error_type": payload.error_type,
     }
+    if payload.session_id is not None:
+        task.session_id = payload.session_id
+    if payload.work_dir is not None:
+        task.work_dir = payload.work_dir
 
     if payload.error_type:
         task.status = "failed"
@@ -213,9 +255,92 @@ async def task_callback(
     else:
         task.status = "completed"
 
+    try:
+        await ws_manager.broadcast(
+            "task.updated",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
+
     return ApiResponse(
         data=TaskResponse.model_validate(task).model_dump(mode="json"),
         message="Callback received",
+    )
+
+
+@router.put("/{task_uuid}/pin", response_model=ApiResponse)
+async def pin_task_session(
+    task_uuid: uuid.UUID,
+    payload: TaskResultSubmit,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bridge pins session_id and work_dir mid-run for crash recovery.
+    Inspired by Multica PinTaskSession.
+    """
+    stmt = select(Task).where(Task.id == task_uuid)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if payload.session_id is not None:
+        task.session_id = payload.session_id
+    if payload.work_dir is not None:
+        task.work_dir = payload.work_dir
+
+    try:
+        await ws_manager.broadcast(
+            "task.updated",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
+
+    return ApiResponse(
+        data=TaskResponse.model_validate(task).model_dump(mode="json"),
+        message="Session pinned",
+    )
+
+
+@router.post("/{task_uuid}/progress", response_model=ApiResponse)
+async def submit_progress(
+    task_uuid: uuid.UUID,
+    payload: TaskProgressSubmit,
+    db: AsyncSession = Depends(get_db),
+):
+    """Bridge submits incremental stdout/stderr during execution."""
+    stmt = select(Task).where(Task.id == task_uuid)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Append delta to progress_output
+    current = task.progress_output or ""
+    if payload.stdout_delta:
+        current += payload.stdout_delta
+    if payload.stderr_delta:
+        current += payload.stderr_delta
+    task.progress_output = current[-50000:]  # cap at 50KB
+
+    try:
+        await ws_manager.broadcast(
+            "task.progress",
+            {
+                "id": str(task.id),
+                "task_id": task.task_id,
+                "stdout_delta": payload.stdout_delta,
+                "stderr_delta": payload.stderr_delta,
+                "progress_pct": payload.progress_pct,
+            },
+        )
+    except Exception:
+        pass
+
+    return ApiResponse(
+        data=TaskResponse.model_validate(task).model_dump(mode="json"),
+        message="Progress received",
     )
 
 
@@ -251,6 +376,14 @@ async def trigger_reminder(task_uuid: uuid.UUID, db: AsyncSession = Depends(get_
     )
 
     await send_wechat_markdown(title="⚠️ 手动任务提醒", content=message_content)
+
+    try:
+        await ws_manager.broadcast(
+            "task.updated",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
 
     return ApiResponse(
         data=TaskResponse.model_validate(task).model_dump(mode="json"),
@@ -291,6 +424,14 @@ async def claim_task(
 
     task.target_machine_id = machine_uuid
     task.status = "dispatched"
+
+    try:
+        await ws_manager.broadcast(
+            "task.updated",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
 
     return ApiResponse(
         data=TaskListResponse.model_validate(task).model_dump(mode="json"),

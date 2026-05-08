@@ -52,6 +52,20 @@ class TaskPriority(str, Enum):
     urgent = "urgent"
 
 
+class IssueStatus(str, Enum):
+    todo = "todo"
+    in_progress = "in_progress"
+    done = "done"
+    cancelled = "cancelled"
+
+
+class IssuePriority(str, Enum):
+    low = "low"
+    medium = "medium"
+    high = "high"
+    urgent = "urgent"
+
+
 # ── Machine Schemas ──
 
 
@@ -134,6 +148,7 @@ class TaskCreate(BaseModel):
     instruction: str = Field(..., max_length=5000)
     project_id: uuid.UUID | None = None
     target_machine_id: uuid.UUID | None = None
+    issue_id: uuid.UUID | None = None
 
 
 class TaskUpdate(BaseModel):
@@ -145,6 +160,14 @@ class TaskResultSubmit(BaseModel):
     stdout: str = Field(default="", max_length=50000)
     stderr: str = Field(default="", max_length=50000)
     error_type: str | None = None
+    session_id: str | None = None
+    work_dir: str | None = None
+
+
+class TaskProgressSubmit(BaseModel):
+    stdout_delta: str = Field(default="", max_length=10000)
+    stderr_delta: str = Field(default="", max_length=10000)
+    progress_pct: int | None = Field(default=None, ge=0, le=100)
 
 
 class TaskResponse(BaseModel):
@@ -154,11 +177,16 @@ class TaskResponse(BaseModel):
     status: TaskStatus
     project_id: uuid.UUID | None
     target_machine_id: uuid.UUID | None
+    issue_id: uuid.UUID | None
+    template_id: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
     result: dict[str, Any] = {}
     error_message: str | None = None
+    session_id: str | None = None
+    work_dir: str | None = None
+    progress_output: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -170,6 +198,7 @@ class TaskListResponse(BaseModel):
     status: TaskStatus
     project_id: uuid.UUID | None
     target_machine_id: uuid.UUID | None
+    issue_id: uuid.UUID | None
     created_at: datetime
     error_message: str | None = None
 
@@ -183,8 +212,68 @@ class PollTaskResponse(BaseModel):
     status: TaskStatus
     project_id: uuid.UUID | None = None
     agent_capability: str = ""
+    issue_id: uuid.UUID | None = None
+    prior_session_id: str | None = None
+    prior_work_dir: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+# ── Issue Schemas ──
+
+
+class IssueCreate(BaseModel):
+    title: str = Field(..., max_length=500)
+    description: str | None = Field(default=None, max_length=10000)
+    status: IssueStatus = IssueStatus.todo
+    priority: IssuePriority = IssuePriority.medium
+    assignee_type: str | None = Field(default=None, max_length=20, description="当前支持 'machine'")
+    assignee_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+
+
+class IssueUpdate(BaseModel):
+    title: str | None = Field(default=None, max_length=500)
+    description: str | None = Field(default=None, max_length=10000)
+    status: IssueStatus | None = None
+    priority: IssuePriority | None = None
+    assignee_type: str | None = Field(default=None, max_length=20)
+    assignee_id: uuid.UUID | None = None
+    project_id: uuid.UUID | None = None
+
+
+class IssueResponse(BaseModel):
+    id: uuid.UUID
+    issue_id: str
+    title: str
+    description: str | None
+    status: IssueStatus
+    priority: IssuePriority
+    assignee_type: str | None
+    assignee_id: uuid.UUID | None
+    project_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class IssueListResponse(BaseModel):
+    id: uuid.UUID
+    issue_id: str
+    title: str
+    status: IssueStatus
+    priority: IssuePriority
+    assignee_type: str | None
+    assignee_id: uuid.UUID | None
+    project_id: uuid.UUID | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class IssueDetailResponse(IssueResponse):
+    tasks: list["TaskListResponse"] = []
 
 
 # ── Project Schemas ──

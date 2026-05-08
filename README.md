@@ -13,16 +13,22 @@
 - **设备可用性控制**：支持启用/禁用设备，被禁用的设备不会收到新任务
 - **多窗口支持**：同一设备可运行多个 Claude Code 窗口，每个窗口通过 `project_id` 拉取属于自己的任务
 
+### Issue-Task 分层调度
+- **Issue 工作单元**：以 Issue 为单位管理工作项（如 "修复登录 bug"），支持优先级、状态、负责人
+- **Task 执行单元**：一个 Issue 可产生多个 Task，形成执行历史；改分配时自动取消旧 Task、创建新 Task
+- **会话恢复（Session Resumption）**：借鉴 Multica 设计，任务完成后保存 `session_id` 和 `work_dir`，下次执行同一 Issue 时自动恢复 Claude Code 对话上下文，保持工作连续性
+
 ### 任务调度
 - **指令下发**：向指定设备下发执行指令（Instruction）
 - **项目绑定**：任务与项目（Project）绑定，不同项目可分配给不同设备
 - **状态跟踪**：完整任务状态流转（pending → dispatched → running → completed/failed）
-- **结果回调**：设备执行完成后通过 Hook 脚本回调上报结果（exit_code, stdout, stderr）
+- **结果回调**：设备执行完成后通过 Hook 脚本回调上报结果（exit_code, stdout, stderr, session_id, work_dir）
 
 ### 前端管理
 - **首页设备仪表盘**：卡片式展示所有设备状态、运行中任务，一键下发任务
 - **设备管理**：查看设备列表、在线状态、Agent 类型
 - **任务管理**：查看/创建任务，追踪执行状态
+- **Issue 管理**：查看/创建 Issue，追踪执行历史和会话恢复状态
 - **项目管理**：查看/创建项目，关联任务
 
 ---
@@ -44,8 +50,8 @@
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                      Cloud API (FastAPI)                    │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐                  │
-│  │ Machines │  │  Tasks   │  │ Projects │                  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ Machines │  │  Tasks   │  │  Issues  │  │ Projects │  │
 │  └──────────┘  └──────────┘  └──────────┘                  │
 │         │            │            │                         │
 │         └────────────┴────────────┘                         │
@@ -67,7 +73,7 @@
 | 模块 | 路径 | 说明 |
 |------|------|------|
 | `cloud/` | 云端 API | FastAPI 应用，提供设备注册、任务调度、项目管理接口 |
-| `bridge/` | 终端代理 | 部署在每台设备上，负责从云端拉取任务并调用本地 Agent 执行 |
+| `bridge/` | 终端代理 | 部署在每台设备上，负责从云端拉取任务并调用本地 Agent 执行，支持自动检测、取消、环境注入 |
 | `frontend/` | 前端管理界面 | Next.js 应用，提供可视化操作界面 |
 
 ---
@@ -81,6 +87,7 @@
 | `machine_name` | string | 展示名称 |
 | `agent_type` | enum | Agent 类型：claude_code / openclaw / hermes_agent / codex |
 | `agent_capability` | enum | 能力：remote_execution（远程执行）/ manual_only（仅提醒） |
+| `agent_version` | string | Agent CLI 版本号（Bridge 启动时自动检测） |
 | `status` | enum | 在线状态：online / offline |
 | `is_enabled` | bool | 是否启用（禁用后不接收新任务） |
 | `agent_status` | enum | Claude 状态：idle（空闲）/ busy（执行中）/ offline |
@@ -92,9 +99,24 @@
 | `instruction` | string | 执行指令（核心字段） |
 | `project_id` | uuid | 关联的项目 |
 | `target_machine_id` | uuid | 指定的执行设备 |
-| `status` | enum | 状态：pending / dispatched / running / completed / failed / cancelled |
+| `issue_id` | uuid | 关联的 Issue |
+| `status` | enum | 状态：pending / dispatched / running / completed / failed / cancelled / pending_manual |
 | `result` | json | 执行结果：{exit_code, stdout, stderr, error_type} |
 | `error_message` | string | 错误信息 |
+| `session_id` | string | Claude Code 会话 ID（用于恢复） |
+| `work_dir` | string | 工作目录（用于恢复） |
+
+### Issue（工作项）
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `issue_id` | string | 可读唯一标识（如 `issue-a1b2c3d4`） |
+| `title` | string | 标题 |
+| `description` | string | 描述 |
+| `status` | enum | todo / in_progress / done / cancelled |
+| `priority` | enum | low / medium / high / urgent |
+| `assignee_type` | string | 负责人类型（如 `machine`） |
+| `assignee_id` | uuid | 负责人 ID |
+| `project_id` | uuid | 关联项目 |
 
 ### Project（项目）
 | 字段 | 类型 | 说明 |
@@ -115,17 +137,30 @@
 | GET | `/machines/dashboard` | 仪表盘数据（含运行中任务） |
 | GET | `/machines/{uuid}` | 设备详情 |
 | PATCH | `/machines/{uuid}` | 更新设备状态（启用/禁用） |
-| GET | `/machines/{uuid}/poll` | 设备轮询任务（支持 `?project_id=` 按项目过滤）|
+| GET | `/machines/{uuid}/poll` | 设备轮询任务（返回 `prior_session_id` / `prior_work_dir` 用于会话恢复）|
 
 ### 任务管理 `/api/v1/tasks`
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/tasks` | 创建任务 |
+| POST | `/tasks` | 创建任务（支持关联 Issue） |
 | GET | `/tasks` | 任务列表 |
 | GET | `/tasks/{uuid}` | 任务详情 |
 | PUT | `/tasks/{uuid}` | 更新任务状态 |
-| POST | `/tasks/{uuid}/callback` | 设备回调上报结果（Hook） |
-| POST | `/tasks/{uuid}/result` | Bridge 提交执行结果 |
+| POST | `/tasks/{uuid}/callback` | 设备回调上报结果（Hook，支持 session_id/work_dir） |
+| POST | `/tasks/{uuid}/result` | Bridge 提交执行结果（支持 session_id/work_dir） |
+| PUT | `/tasks/{uuid}/pin` | 运行时固定 session（崩溃恢复） |
+| POST | `/tasks/{uuid}/remind` | 触发手动任务提醒（WeChat） |
+| POST | `/tasks/{uuid}/claim` | 自动领取未分配任务 |
+
+### Issue 管理 `/api/v1/issues`
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/issues` | 创建 Issue（分配机器时自动派发 Task） |
+| GET | `/issues` | Issue 列表（支持 status、project_id、assignee_id 过滤） |
+| GET | `/issues/{uuid}` | Issue 详情（含执行历史 tasks） |
+| PUT | `/issues/{uuid}` | 更新 Issue（改分配时自动取消旧 Task、创建新 Task） |
+| DELETE | `/issues/{uuid}` | 删除 Issue（级联取消活跃 Task） |
+| GET | `/issues/{uuid}/tasks` | 获取 Issue 的执行历史 |
 
 ### 项目管理 `/api/v1/projects`
 | 方法 | 路径 | 说明 |
@@ -165,6 +200,22 @@ cp config.yaml.example config.yaml  # 编辑 config.yaml
 python -m bridge.main
 ```
 
+**配置说明**：`agent.path` 支持三种解析方式（优先级从高到低）：
+1. 环境变量（如 `DUS_CLAUDE_PATH=/usr/local/bin/claude`）
+2. `config.yaml` 中显式配置的路径
+3. 系统 PATH 自动搜索（默认二进制名：`claude`、`codex`、`hermes`、`openclaw`）
+
+**环境变量**：Agent 执行时自动注入以下变量：
+- `DUS_TOKEN` — Cloud API Key
+- `DUS_API_URL` — Cloud API 地址
+- `DUS_MACHINE_ID` — 当前机器 ID
+- `DUS_TASK_ID` — 当前任务 ID
+- `DUS_MACHINE_UUID` — 持久化机器 UUID
+
+**健康检查**：启动后访问 http://127.0.0.1:19514/health 查看状态；`POST /shutdown` 触发优雅关闭
+
+**工作空间清理**：任务完成后自动写入 `.gc_meta.json`，GC 按 `gc.interval` 周期扫描并删除超时的旧工作目录
+
 ### 3. 部署 Bridge（方式二：一键安装，推荐）
 
 在项目目录下下载并运行一键安装脚本：
@@ -188,6 +239,44 @@ chmod +x dus-setup.sh
 ---
 
 ## 近期更新记录
+
+### 2026-05-08
+
+**Issue-Task 分层模型 + Session Resumption（Multica 设计迁移）**
+- **Issue 工作单元**：新增 `Issue` 模型作为工作项管理层，支持标题、描述、状态、优先级、负责人
+- **Task 执行单元**：`Task` 新增 `issue_id`、`session_id`、`work_dir` 字段，一个 Issue 可包含多个 Task 形成执行历史
+- **自动派发**：创建 Issue 并分配给机器时，自动创建关联 Task；更新分配时自动取消旧 Task、创建新 Task
+- **Session Resumption（会话恢复）**：
+  - 任务完成后 Bridge 提交 `session_id` + `work_dir` 回 Cloud
+  - 同一 Issue 产生新 Task 时，Cloud 在 poll 响应中返回 `prior_session_id` + `prior_work_dir`
+  - Bridge 使用 `--resume <session_id>` 恢复 Claude Code 对话上下文，使用 `prior_work_dir` 保持工作目录连续性
+  - 新增 `PUT /tasks/{uuid}/pin` 接口支持运行中固定 session（崩溃恢复）
+- **前端 Issue 管理页面**：新增 Issue 列表页（支持状态筛选、新建弹窗）和 Issue 详情页（含执行历史任务表格）
+
+**Bridge Agent CLI 自动检测与执行升级（Multica 设计迁移）**
+- **Agent CLI 自动检测**：Bridge 启动时按优先级自动解析 Agent 可执行文件路径
+  1. 环境变量覆盖（如 `DUS_CLAUDE_PATH`）
+  2. 配置文件中的 `agent.path`
+  3. 系统 PATH 自动搜索（`shutil.which`）
+- **Claude Code 非交互式自动执行**：引入 `--permission-mode bypassPermissions` 标志，使 Claude Code 在远程执行时自动批准所有工具调用（文件编辑、bash 命令等），无需人工交互
+- **Agent 版本检测**：Bridge 启动时自动运行 `claude --version` 并记录版本号
+- **环境变量注入**：执行 Agent 时自动注入 `DUS_TOKEN`、`DUS_API_URL`、`DUS_MACHINE_ID`、`DUS_TASK_ID`，供 Agent 内部逻辑使用
+- **任务取消机制**：Bridge 在任务执行期间每 5 秒轮询云端任务状态，若检测到 `cancelled` 状态则立即终止 Agent 进程
+
+**Bridge 部署与运维增强（Multica 部署优势整合）**
+- **本地健康检查 HTTP 服务**：Bridge 启动时在 `127.0.0.1:19514` 监听健康端口
+  - `GET /health` 返回运行状态、PID、运行时间、活跃任务数、Agent 版本
+  - `POST /shutdown` 触发优雅关闭（不依赖 OS 信号，Windows 友好）
+  - 端口占用检测：若端口已被占用则拒绝启动，防止重复运行多个 Bridge 实例
+- **持久化机器 UUID**：在 `~/.dus/machine.uuid` 中持久化存储机器唯一标识
+  - 不因 hostname 变化或配置修改而重复注册为新机器
+  - 原子写入 + 0600 权限，损坏时自动重新生成
+- **工作空间垃圾回收**：定时清理已完成/失败/取消的任务工作目录
+  - 活跃任务保护：正在运行中的任务目录不会被清理
+  - 配置项：`gc.enabled`、`gc.interval`（扫描间隔）、`gc.ttl`（保留时长）
+  - 任务完成后写入 `.gc_meta.json` 元数据，用于精确 TTL 判断
+- **并发数配置化**：`max_concurrent_tasks` 从硬编码改为配置项（默认 3）
+- **API Client 身份头部**：所有请求携带 `X-Client-Platform`、`X-Client-OS` 头部，便于云端调试和版本统计
 
 ### 2026-04-20
 
@@ -251,6 +340,7 @@ DUS/
 │   ├── routers/             # API 路由
 │   │   ├── machines.py     # 设备管理
 │   │   ├── tasks.py        # 任务管理
+│   │   ├── issues.py       # Issue 管理
 │   │   └── projects.py      # 项目管理
 │   └── dus.db              # SQLite 数据库
 │
@@ -259,7 +349,10 @@ DUS/
 │   │   ├── main.py         # Bridge 主程序
 │   │   ├── api_client.py  # 云端 API 客户端
 │   │   ├── executor.py     # Agent 执行器
-│   │   └── config.py       # 配置管理
+│   │   ├── config.py       # 配置管理
+│   │   ├── health.py       # 本地健康检查 HTTP 服务
+│   │   ├── gc.py           # 工作空间垃圾回收
+│   │   └── identity.py     # 持久化机器 UUID
 │   ├── config.yaml.example # 配置示例
 │   └── dus-setup.sh        # 一键安装脚本
 │
@@ -268,6 +361,7 @@ DUS/
     │   ├── page.tsx        # 首页仪表盘
     │   ├── machines/       # 设备管理
     │   ├── tasks/         # 任务管理
+    │   ├── issues/        # Issue 管理
     │   └── projects/      # 项目管理
     ├── src/components/     # UI 组件
     └── src/lib/api.ts     # API 客户端

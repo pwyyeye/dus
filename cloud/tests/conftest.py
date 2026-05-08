@@ -1,6 +1,9 @@
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 from typing import Any
+
+os.environ["API_KEY"] = "test-api-key-12345"
 
 import pytest
 import pytest_asyncio
