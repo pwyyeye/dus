@@ -279,7 +279,6 @@ version: "1.0.0"
 machine:
   machine_id: "$MACHINE_ID"
   machine_name: "$MACHINE_NAME"
-  agent_type: "claude_code"
   agent_capability: "remote_execution"
   project_id: "$PROJECT_ID"
 

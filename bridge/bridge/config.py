@@ -68,7 +68,6 @@ def detect_agent_path(agent_type: str, configured_path: str | None = None) -> st
 class MachineConfig:
     machine_id: str = "CHANGE_ME"
     machine_name: str = "CHANGE_ME"
-    agent_type: str = "claude_code"
     agent_capability: str = "remote_execution"
     project_id: str | None = None
     project_root: str | None = None
@@ -119,29 +118,43 @@ class BridgeConfig:
 def detect_available_agents() -> list[dict]:
     """Detect which agent CLIs are available on this machine.
 
+    Resolution order per agent type (highest priority first):
+    1. Environment variable (e.g. DUS_CLAUDE_PATH)
+    2. shutil.which() on PATH using default binary name
+
     Returns a list of dicts: [{"agent_type": ..., "path": ..., "version": ...}]
     """
     agents = []
     for agent_type, bin_name in _DEFAULT_AGENT_BINS.items():
-        resolved = shutil.which(bin_name)
-        if resolved:
-            version = "unknown"
-            try:
-                result = subprocess.run(
-                    [resolved, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                text = (result.stdout.strip() or result.stderr.strip())
-                version = text.splitlines()[0] if text else "unknown"
-            except Exception:
-                pass
-            agents.append({
-                "agent_type": agent_type,
-                "path": resolved,
-                "version": version,
-            })
+        resolved = None
+        # 1. Env var override
+        env_var = _AGENT_PATH_ENV_VARS.get(agent_type)
+        if env_var and os.getenv(env_var):
+            env_path = os.getenv(env_var)
+            if shutil.which(env_path):
+                resolved = env_path
+        # 2. Auto-detect from PATH
+        if not resolved:
+            resolved = shutil.which(bin_name)
+        if not resolved:
+            continue
+        version = "unknown"
+        try:
+            result = subprocess.run(
+                [resolved, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            text = (result.stdout.strip() or result.stderr.strip())
+            version = text.splitlines()[0] if text else "unknown"
+        except Exception:
+            pass
+        agents.append({
+            "agent_type": agent_type,
+            "path": resolved,
+            "version": version,
+        })
     return agents
 
 
@@ -189,8 +202,8 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
             print(f"ERROR: Please set '{field_name}' in config.yaml (currently 'CHANGE_ME')")
             sys.exit(1)
 
-    # Auto-detect agent CLI path if not explicitly set or not found
-    cfg.agent.path = detect_agent_path(cfg.machine.agent_type, cfg.agent.path)
+    # Agent paths are resolved per-agent-type at bridge startup (not here, since
+    # there is no single agent_type — the bridge registers one machine per agent CLI).
 
     # Auto-set project_root from current working directory if not configured
     if not cfg.machine.project_root:

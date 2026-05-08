@@ -4,7 +4,6 @@ bridge:
 machine:
   machine_id: "CHANGE_ME"                    # e.g. "macbook-pro-office"
   machine_name: "CHANGE_ME"                  # e.g. "办公室 MacBook Pro"
-  agent_type: "claude_code"                  # claude_code | openclaw | hermes_agent | codex
   agent_capability: "remote_execution"       # remote_execution | manual_only
   project_id: null                            # 关联的项目ID，不填则不关联项目
 
@@ -14,13 +13,12 @@ cloud:
   poll_interval: 60                          # seconds
 
 agent:
+  # The bridge auto-detects available agent CLIs (claude, codex, hermes, openclaw,
+  # kimi-cli) and registers one machine per detected CLI.
+  #
   # Agent CLI path resolution order (highest priority first):
   #   1. Environment variable  (e.g. DUS_CLAUDE_PATH)
-  #   2. Configured path below (if set and differs from default)
-  #   3. Auto-detect via PATH   (claude, codex, hermes, openclaw)
-  #
-  # Leave as default binary name (e.g. "claude") to auto-detect from PATH.
-  path: "claude"
+  #   2. Auto-detect via PATH   (claude, codex, hermes, openclaw)
   workdir_template: "/tmp/dus_task_{task_id}"
   timeout: 3600
 

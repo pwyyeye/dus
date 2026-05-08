@@ -28,7 +28,6 @@ class ApiClient:
             "X-Client-Platform": "bridge",
             "X-Client-OS": _normalize_os(),
         }
-        # Append version if available
         version = getattr(config, "_version", "")
         if version:
             self.headers["X-Client-Version"] = version
@@ -37,7 +36,8 @@ class ApiClient:
             timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0),
             headers=self.headers,
         )
-        self.machine_uuid: str | None = None
+        # agent_type → cloud-side machine UUID
+        self.machine_uuids: dict[str, str] = {}
 
     async def close(self):
         await self._client.aclose()
@@ -64,12 +64,18 @@ class ApiClient:
         logger.error(f"All {MAX_RETRIES} retries failed for {method} {path}")
         return None
 
-    async def register_machine(self, agent_version: str | None = None, available_agents: list[dict] | None = None) -> bool:
-        """Register this machine with the cloud."""
+    async def register_machine(
+        self,
+        agent_type: str,
+        agent_version: str | None = None,
+    ) -> bool:
+        """Register one agent CLI as a machine with the cloud."""
+        machine_id = f"{self.machine_config.machine_id}-{agent_type}"
+        machine_name = f"{self.machine_config.machine_name} - {agent_type}"
         payload = {
-            "machine_id": self.machine_config.machine_id,
-            "machine_name": self.machine_config.machine_name,
-            "agent_type": self.machine_config.agent_type,
+            "machine_id": machine_id,
+            "machine_name": machine_name,
+            "agent_type": agent_type,
             "agent_capability": self.machine_config.agent_capability,
         }
         if self.machine_config.project_id:
@@ -78,34 +84,31 @@ class ApiClient:
             payload["project_root"] = self.machine_config.project_root
         if agent_version:
             payload["agent_version"] = agent_version
-        if available_agents:
-            payload["available_agents"] = available_agents
 
         result = await self._request("POST", "/machines", json=payload)
         if result and result.get("success"):
-            self.machine_uuid = result["data"]["id"]
-            logger.info(f"Registered machine: {self.machine_config.machine_id} (uuid={self.machine_uuid})")
+            self.machine_uuids[agent_type] = result["data"]["id"]
+            logger.info(f"Registered machine: {machine_id} (agent={agent_type}, uuid={self.machine_uuids[agent_type]})")
             return True
-        logger.error("Failed to register machine")
+        logger.error(f"Failed to register machine for agent_type={agent_type}")
         return False
 
-    async def poll_tasks(self, project_id: str | None = None) -> list[dict]:
-        """Poll for pending tasks for this machine's project."""
-        if not self.machine_uuid:
-            logger.warning("Machine not registered, skipping poll")
+    def is_registered(self, agent_type: str) -> bool:
+        return agent_type in self.machine_uuids
+
+    async def poll_tasks(self, agent_type: str) -> list[dict]:
+        """Poll for pending tasks for a specific agent CLI machine."""
+        machine_uuid = self.machine_uuids.get(agent_type)
+        if not machine_uuid:
+            logger.warning(f"Machine not registered for {agent_type}, skipping poll")
             return []
 
-        path = f"/machines/{self.machine_uuid}/poll"
-        # project_id parameter overrides config; None uses config value
-        effective_project_id = project_id if project_id is not None else self.machine_config.project_id
-        if effective_project_id:
-            path = f"{path}?project_id={effective_project_id}"
-
+        path = f"/machines/{machine_uuid}/poll"
         result = await self._request("GET", path)
         if result and "tasks" in result:
             tasks = result["tasks"]
             if tasks:
-                logger.info(f"Polled {len(tasks)} task(s)")
+                logger.info(f"Polled {len(tasks)} task(s) for {agent_type}")
             return tasks
         return []
 
@@ -153,9 +156,10 @@ class ApiClient:
         result = await self._request("POST", f"/tasks/{task_id}/progress", json=payload)
         return bool(result and result.get("success"))
 
-    async def update_agent_status(self, agent_status: str) -> bool:
-        """Update agent status (idle/busy/offline)."""
-        if not self.machine_uuid:
+    async def update_agent_status(self, agent_type: str, agent_status: str) -> bool:
+        """Update agent status (idle/busy/offline) for a specific agent CLI machine."""
+        machine_uuid = self.machine_uuids.get(agent_type)
+        if not machine_uuid:
             return False
-        result = await self._request("PATCH", f"/machines/{self.machine_uuid}", json={"agent_status": agent_status})
+        result = await self._request("PATCH", f"/machines/{machine_uuid}", json={"agent_status": agent_status})
         return bool(result and result.get("success"))
