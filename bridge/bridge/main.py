@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from bridge.config import load_config, BridgeConfig
+from bridge.config import load_config, BridgeConfig, detect_available_agents
 from bridge.api_client import ApiClient
 from bridge.executor import get_executor
 from bridge.logger import setup_logger
@@ -38,6 +38,8 @@ class Bridge:
         self._tasks: list[asyncio.Task] = []
         self._consecutive_401s = 0
         self._active_task_ids: set[str] = set()
+        self._agent_version = "unknown"
+        self._available_agents: list[dict] = []
 
         # Health server
         self.health = HealthServer(
@@ -76,16 +78,22 @@ class Bridge:
             logger.error("Health server failed to start. Another bridge may be running.")
             return
 
-        # Register machine
-        await self._register_with_retry()
-        if not self.api.machine_uuid:
-            logger.error("Failed to register machine, exiting")
-            return
-
-        # Detect agent version
+        # Detect local agent info before registering
         self._agent_version = await self.executor.get_version() or "unknown"
         if self._agent_version != "unknown":
             logger.info(f"Agent version: {self._agent_version}")
+        self._available_agents = detect_available_agents()
+        if self._available_agents:
+            logger.info(f"Available agents: {[a['agent_type'] for a in self._available_agents]}")
+
+        # Register machine (with agent info)
+        await self._register_with_retry(
+            agent_version=self._agent_version,
+            available_agents=self._available_agents,
+        )
+        if not self.api.machine_uuid:
+            logger.error("Failed to register machine, exiting")
+            return
 
         # Start GC loop
         self.gc.start()
@@ -115,11 +123,14 @@ class Bridge:
 
             await asyncio.sleep(self.config.cloud.poll_interval)
 
-    async def _register_with_retry(self):
+    async def _register_with_retry(self, agent_version: str | None = None, available_agents: list[dict] | None = None):
         """Register with exponential backoff retry."""
         delay = REGISTER_RETRY_BASE
         while self._running:
-            registered = await self.api.register_machine()
+            registered = await self.api.register_machine(
+                agent_version=agent_version,
+                available_agents=available_agents,
+            )
             if registered:
                 self._consecutive_401s = 0
                 return

@@ -299,12 +299,14 @@ function Start-Bridge {
     $pythonExe = (Get-Command $python).Source
     $logPath = Join-Path $DusDir "bridge-stdout.log"
 
-    # Use cmd.exe so we can redirect both stdout and stderr to the same file (2>&1)
+    # Use cmd.exe so we can redirect both stdout and stderr to the same file (2>&1).
     # Start-Process does not allow -RedirectStandardOutput and -RedirectStandardError
     # to point to the same path on Windows.
-    $cmdLine = "`"$pythonExe`" -m bridge.main > `"$logPath`" 2>&1"
+    # NOTE: cmd strips the first and last quote of the /c argument if it starts with
+    # a double-quote. We avoid this by starting the command with "cd /d ...".
+    $cmdLine = "cd /d `"$DusDir`" && `"$pythonExe`" -m bridge.main > `"$logPath`" 2>&1"
     $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmdLine `
-        -WorkingDirectory $DusDir -WindowStyle Hidden -PassThru
+        -WindowStyle Hidden -PassThru
 
     $proc.Id | Set-Content -Path $PidFile
     Start-Sleep -Seconds 2
@@ -331,6 +333,15 @@ function Stop-Bridge {
     }
 
     Write-Info "Stopping Bridge (PID: $pidValue)..."
+
+    # Kill child processes first (python.exe launched by cmd.exe)
+    try {
+        $children = Get-CimInstance Win32_Process -Filter "ParentProcessId = $pidValue" -ErrorAction SilentlyContinue
+        foreach ($child in $children) {
+            Stop-Process -Id $child.ProcessId -Force -ErrorAction SilentlyContinue
+        }
+    } catch {}
+
     Stop-Process -Id $pidValue -Force -ErrorAction SilentlyContinue
 
     $count = 0

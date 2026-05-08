@@ -55,6 +55,7 @@ class Machine(Base):
     agent_type: Mapped[str] = mapped_column(String(50), nullable=False)
     agent_capability: Mapped[str] = mapped_column(String(20), nullable=False)
     agent_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    available_agents: Mapped[list[dict]] = mapped_column(JSON, default=list)
     status: Mapped[str] = mapped_column(String(20), default="offline")
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     agent_status: Mapped[str] = mapped_column(String(20), default="offline")

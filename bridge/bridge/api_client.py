@@ -64,7 +64,7 @@ class ApiClient:
         logger.error(f"All {MAX_RETRIES} retries failed for {method} {path}")
         return None
 
-    async def register_machine(self) -> bool:
+    async def register_machine(self, agent_version: str | None = None, available_agents: list[dict] | None = None) -> bool:
         """Register this machine with the cloud."""
         payload = {
             "machine_id": self.machine_config.machine_id,
@@ -74,6 +74,12 @@ class ApiClient:
         }
         if self.machine_config.project_id:
             payload["project_id"] = self.machine_config.project_id
+        if self.machine_config.project_root:
+            payload["project_root"] = self.machine_config.project_root
+        if agent_version:
+            payload["agent_version"] = agent_version
+        if available_agents:
+            payload["available_agents"] = available_agents
 
         result = await self._request("POST", "/machines", json=payload)
         if result and result.get("success"):

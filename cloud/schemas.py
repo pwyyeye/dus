@@ -17,6 +17,7 @@ class AgentType(str, Enum):
     openclaw = "openclaw"
     hermes_agent = "hermes_agent"
     codex = "codex"
+    kimi = "kimi"
 
 
 class AgentCapability(str, Enum):
@@ -76,6 +77,8 @@ class MachineCreate(BaseModel):
     agent_capability: AgentCapability
     agent_version: str | None = None
     project_id: str | None = Field(default=None, max_length=255, description="关联的项目ID，不存在则自动创建")
+    project_root: str | None = Field(default=None, max_length=1024, description="项目根目录路径")
+    available_agents: list[dict] | None = Field(default=None, description="设备上可用的agent CLI列表")
 
     @field_validator("machine_id")
     @classmethod
@@ -99,6 +102,7 @@ class MachineResponse(BaseModel):
     last_poll_at: datetime | None
     registered_at: datetime
     pending_task_count: int = 0
+    available_agents: Any | None = None
 
     model_config = {"from_attributes": True}
 
@@ -114,6 +118,7 @@ class MachineListResponse(BaseModel):
     agent_status: AgentStatus = AgentStatus.offline
     project_id: uuid.UUID | None = None
     last_poll_at: datetime | None
+    available_agents: Any | None = None
 
     model_config = {"from_attributes": True}
 
@@ -139,6 +144,7 @@ class MachineUpdateStatus(BaseModel):
     is_enabled: bool | None = None
     status: MachineStatus | None = None
     agent_status: AgentStatus | None = None
+    agent_version: str | None = None
 
 
 # ── Task Schemas ──

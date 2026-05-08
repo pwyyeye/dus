@@ -39,9 +39,13 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
             project = Project(
                 project_id=payload.project_id,
                 project_name=payload.project_id,
+                root_path=payload.project_root,
             )
             db.add(project)
             await db.flush()
+        elif payload.project_root and not project.root_path:
+            # Update existing project's root_path if not set
+            project.root_path = payload.project_root
         resolved_project_id = project.id
 
     stmt = select(Machine).where(Machine.machine_id == payload.machine_id)
@@ -53,6 +57,8 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
         machine.agent_type = payload.agent_type.value
         machine.agent_capability = payload.agent_capability.value
         machine.agent_version = payload.agent_version
+        if payload.available_agents is not None:
+            machine.available_agents = payload.available_agents
         machine.status = "online"
         machine.project_id = resolved_project_id or machine.project_id
         machine.last_poll_at = datetime.now(timezone.utc)
@@ -63,6 +69,7 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
             agent_type=payload.agent_type.value,
             agent_capability=payload.agent_capability.value,
             agent_version=payload.agent_version,
+            available_agents=payload.available_agents or [],
             status="online",
             project_id=resolved_project_id,
             last_poll_at=datetime.now(timezone.utc),
@@ -202,6 +209,8 @@ async def update_machine(
         machine.status = payload.status.value
     if payload.agent_status is not None:
         machine.agent_status = payload.agent_status.value
+    if payload.agent_version is not None:
+        machine.agent_version = payload.agent_version
 
     await db.flush()
 

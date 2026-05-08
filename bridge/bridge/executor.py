@@ -383,6 +383,7 @@ def get_executor(agent_type: str, agent_path: str, timeout: int = 3600) -> Agent
         "codex": CodexExecutor,
         "hermes_agent": GenericAgentExecutor,
         "openclaw": GenericAgentExecutor,
+        "kimi": GenericAgentExecutor,
     }
     cls = executors.get(agent_type, StubExecutor)
     return cls(agent_path=agent_path, timeout=timeout)

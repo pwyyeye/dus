@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +15,7 @@ _DEFAULT_AGENT_BINS: dict[str, str] = {
     "codex": "codex",
     "hermes_agent": "hermes",
     "openclaw": "openclaw",
+    "kimi": "kimi-cli",
 }
 
 # Environment variable overrides for agent path
@@ -22,6 +24,7 @@ _AGENT_PATH_ENV_VARS: dict[str, str] = {
     "codex": "DUS_CODEX_PATH",
     "hermes_agent": "DUS_HERMES_PATH",
     "openclaw": "DUS_OPENCLAW_PATH",
+    "kimi": "DUS_KIMI_PATH",
 }
 
 
@@ -68,6 +71,7 @@ class MachineConfig:
     agent_type: str = "claude_code"
     agent_capability: str = "remote_execution"
     project_id: str | None = None
+    project_root: str | None = None
 
 
 @dataclass
@@ -110,6 +114,35 @@ class BridgeConfig:
     health: HealthConfig = field(default_factory=HealthConfig)
     gc: GCConfig = field(default_factory=GCConfig)
     max_concurrent_tasks: int = 3
+
+
+def detect_available_agents() -> list[dict]:
+    """Detect which agent CLIs are available on this machine.
+
+    Returns a list of dicts: [{"agent_type": ..., "path": ..., "version": ...}]
+    """
+    agents = []
+    for agent_type, bin_name in _DEFAULT_AGENT_BINS.items():
+        resolved = shutil.which(bin_name)
+        if resolved:
+            version = "unknown"
+            try:
+                result = subprocess.run(
+                    [resolved, "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                text = (result.stdout.strip() or result.stderr.strip())
+                version = text.splitlines()[0] if text else "unknown"
+            except Exception:
+                pass
+            agents.append({
+                "agent_type": agent_type,
+                "path": resolved,
+                "version": version,
+            })
+    return agents
 
 
 def load_config(config_path: str = "config.yaml") -> BridgeConfig:
@@ -158,5 +191,9 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
 
     # Auto-detect agent CLI path if not explicitly set or not found
     cfg.agent.path = detect_agent_path(cfg.machine.agent_type, cfg.agent.path)
+
+    # Auto-set project_root from current working directory if not configured
+    if not cfg.machine.project_root:
+        cfg.machine.project_root = os.getcwd()
 
     return cfg
