@@ -296,11 +296,15 @@ function Start-Bridge {
     $env:PYTHONPATH = "$PythonPathDir;$env:PYTHONPATH"
 
     $python = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }
+    $pythonExe = (Get-Command $python).Source
     $logPath = Join-Path $DusDir "bridge-stdout.log"
 
-    $proc = Start-Process -FilePath $python -ArgumentList "-m","bridge.main" `
-        -WorkingDirectory $DusDir -WindowStyle Hidden `
-        -RedirectStandardOutput $logPath -RedirectStandardError $logPath -PassThru
+    # Use cmd.exe so we can redirect both stdout and stderr to the same file (2>&1)
+    # Start-Process does not allow -RedirectStandardOutput and -RedirectStandardError
+    # to point to the same path on Windows.
+    $cmdLine = "`"$pythonExe`" -m bridge.main > `"$logPath`" 2>&1"
+    $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", $cmdLine `
+        -WorkingDirectory $DusDir -WindowStyle Hidden -PassThru
 
     $proc.Id | Set-Content -Path $PidFile
     Start-Sleep -Seconds 2

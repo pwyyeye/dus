@@ -84,8 +84,12 @@ function Install-Bridge {
     if (Test-Path (Join-Path $BridgeDir ".git")) {
         Write-Info "Updating existing bridge code..."
         Push-Location $BridgeDir
-        git fetch origin main --depth 1 2>$null
-        git reset --hard origin/main 2>$null
+        try {
+            git fetch origin main --depth 1 2>$null
+            git reset --hard origin/main 2>$null
+        } catch {
+            Write-Warn "Could not update from GitHub (network issue?). Using existing local code."
+        }
         Pop-Location
     } else {
         Write-Info "Cloning DUS repository..."
@@ -117,9 +121,17 @@ function Install-Venv {
 function Install-Deps {
     $pip = Join-Path $VenvDir "Scripts\pip.exe"
     Write-Info "Installing Python dependencies..."
-    & $pip install --upgrade pip 2>$null | Out-Null
-    $req1 = Join-Path $BridgeDir "bridge\requirements.txt"
-    $req2 = Join-Path $BridgeDir "requirements.txt"
+
+    # Upgrade pip (ignore errors — warnings on stderr should not be fatal)
+    try {
+        & $pip install --upgrade pip 2>$null | Out-Null
+    } catch {
+        # Safe to ignore; pip may write upgrade warnings to stderr
+    }
+
+    # Requirements.txt lives at repo root after clone
+    $req1 = Join-Path $BridgeDir "requirements.txt"
+    $req2 = Join-Path $BridgeDir "bridge\requirements.txt"
     if (Test-Path $req1) {
         & $pip install -r $req1
     } else {
