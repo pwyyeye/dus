@@ -765,15 +765,17 @@ async def test_delete_issue_cancels_tasks(client, db_session):
     )
     issue_uuid = create_response.json()["data"]["id"]
 
+    # Poll to get the task UUID before deletion
+    poll_resp = await client.get(f"/api/v1/machines/{m_uuid}/poll", headers=auth_headers())
+    task_uuid = poll_resp.json()["tasks"][0]["id"]
+
     # Delete issue
     response = await client.delete(f"/api/v1/issues/{issue_uuid}", headers=auth_headers())
     assert response.status_code == 200
 
-    # Verify tasks are cancelled
-    tasks_response = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
-    tasks = tasks_response.json()["data"]
-    for t in tasks:
-        assert t["status"] == "cancelled"
+    # Verify task is cancelled (query by task UUID since issue is deleted)
+    task_resp = await client.get(f"/api/v1/tasks/{task_uuid}", headers=auth_headers())
+    assert task_resp.json()["data"]["status"] == "cancelled"
 
 
 @pytest.mark.asyncio

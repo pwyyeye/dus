@@ -639,7 +639,7 @@ async def test_issue_reassign_cancels_and_creates_task(client, db_session):
     # Verify m2 poll gets new task
     poll2 = await client.get(f"/api/v1/machines/{m2_uuid}/poll", headers=auth_headers())
     assert len(poll2.json()["tasks"]) == 1
-    assert poll2.json()["tasks"][0]["target_machine_id"] == m2_uuid
+    assert poll2.json()["tasks"][0]["issue_id"] == issue_uuid
 
     # Verify old task on m1 is cancelled
     tasks_resp = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
@@ -714,17 +714,17 @@ async def test_delete_issue_cancels_active_tasks(client, db_session):
     }, headers=auth_headers())
     issue_uuid = issue.json()["data"]["id"]
 
-    # Dispatch the task
-    await client.get(f"/api/v1/machines/{m_uuid}/poll", headers=auth_headers())
+    # Dispatch the task and capture its UUID
+    poll_resp = await client.get(f"/api/v1/machines/{m_uuid}/poll", headers=auth_headers())
+    task_uuid = poll_resp.json()["tasks"][0]["id"]
 
     # Delete issue
     del_resp = await client.delete(f"/api/v1/issues/{issue_uuid}", headers=auth_headers())
     assert del_resp.status_code == 200
 
-    # All tasks should be cancelled
-    tasks_resp = await client.get(f"/api/v1/issues/{issue_uuid}/tasks", headers=auth_headers())
-    for t in tasks_resp.json()["data"]:
-        assert t["status"] == "cancelled"
+    # Task should be cancelled (query by task UUID since issue is deleted)
+    task_resp = await client.get(f"/api/v1/tasks/{task_uuid}", headers=auth_headers())
+    assert task_resp.json()["data"]["status"] == "cancelled"
 
 
 @pytest.mark.asyncio
