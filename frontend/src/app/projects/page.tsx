@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchProjects, createProject } from "@/lib/api";
+import { fetchProjects, createProject, updateProject } from "@/lib/api";
 import {
   Card,
   CardContent,
@@ -22,6 +22,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { PencilIcon } from "lucide-react";
+import { toast } from "sonner";
+import { SkeletonCards } from "@/components/ui/skeleton";
 
 function formatTime(iso: string | null) {
   if (!iso) return "-";
@@ -60,9 +63,10 @@ interface ProjectCardProps {
     idle_hours: number | null;
     created_at: string;
   };
+  onEdit: (project: ProjectCardProps["project"]) => void;
 }
 
-function ProjectCard({ project }: ProjectCardProps) {
+function ProjectCard({ project, onEdit }: ProjectCardProps) {
   const idleStatus = getIdleStatus(project.idle_hours, project.idle_threshold_hours);
   const statusConfig = idleStatusConfig[idleStatus];
 
@@ -76,12 +80,17 @@ function ProjectCard({ project }: ProjectCardProps) {
               {project.project_id}
             </CardDescription>
           </div>
-          <Badge
-            variant={statusConfig.variant}
-            className={cn("shrink-0", statusConfig.className.includes("bg-") && "text-white")}
-          >
-            {statusConfig.label}
-          </Badge>
+          <div className="flex items-start gap-2">
+            <Badge
+              variant={statusConfig.variant}
+              className={cn("shrink-0", statusConfig.className.includes("bg-") && "text-white")}
+            >
+              {statusConfig.label}
+            </Badge>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => onEdit(project)}>
+              <PencilIcon className="h-3.5 w-3.5" />
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -122,6 +131,21 @@ export default function ProjectsPage() {
   const [open, setOpen] = useState(false);
   const [projectName, setProjectName] = useState("");
   const [rootPath, setRootPath] = useState("");
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingProject, setEditingProject] = useState<null | {
+    id: string;
+    project_id: string;
+    project_name: string;
+    root_path: string | null;
+    idle_threshold_hours: number;
+    last_activity_at: string | null;
+    idle_hours: number | null;
+    created_at: string;
+  }>(null);
+  const [editProjectName, setEditProjectName] = useState("");
+  const [editRootPath, setEditRootPath] = useState("");
+
   const queryClient = useQueryClient();
 
   const { data: projects, isLoading } = useQuery({
@@ -137,7 +161,21 @@ export default function ProjectsPage() {
       setOpen(false);
       setProjectName("");
       setRootPath("");
+      toast.success("项目创建成功");
     },
+    onError: (err: Error) => toast.error(`创建失败: ${err.message}`),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { project_name?: string; root_path?: string } }) =>
+      updateProject(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+      setEditOpen(false);
+      setEditingProject(null);
+      toast.success("项目更新成功");
+    },
+    onError: (err: Error) => toast.error(`更新失败: ${err.message}`),
   });
 
   const onSubmit = (e: React.FormEvent) => {
@@ -146,6 +184,25 @@ export default function ProjectsPage() {
     mutation.mutate({
       project_name: projectName,
       root_path: rootPath || undefined,
+    });
+  };
+
+  const handleEdit = (project: NonNullable<typeof editingProject>) => {
+    setEditingProject(project);
+    setEditProjectName(project.project_name);
+    setEditRootPath(project.root_path ?? "");
+    setEditOpen(true);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProject || !editProjectName.trim()) return;
+    updateMutation.mutate({
+      id: editingProject.id,
+      data: {
+        project_name: editProjectName,
+        root_path: editRootPath || undefined,
+      },
     });
   };
 
@@ -193,10 +250,44 @@ export default function ProjectsPage() {
             </form>
           </DialogContent>
         </Dialog>
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+          <DialogContent className="sm:max-w-[420px]">
+            <DialogHeader>
+              <DialogTitle>编辑项目</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="edit_project_name">项目名称</Label>
+                <Input
+                  id="edit_project_name"
+                  value={editProjectName}
+                  onChange={(e) => setEditProjectName(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="edit_root_path">项目根路径</Label>
+                <Input
+                  id="edit_root_path"
+                  value={editRootPath}
+                  onChange={(e) => setEditRootPath(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                  取消
+                </Button>
+                <Button type="submit" disabled={updateMutation.isPending}>
+                  {updateMutation.isPending ? "保存中..." : "保存"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-8 text-muted-foreground">加载中...</div>
+        <SkeletonCards count={6} />
       ) : !projects?.length ? (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
@@ -206,7 +297,7 @@ export default function ProjectsPage() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((p) => (
-            <ProjectCard key={p.id} project={p} />
+            <ProjectCard key={p.id} project={p} onEdit={handleEdit} />
           ))}
         </div>
       )}

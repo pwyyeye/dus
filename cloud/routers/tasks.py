@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from database import get_db
-from models import Task, Machine, Issue
+from models import Task, Machine, Issue, TaskLog
 from notifier import send_wechat_markdown
 from schemas import (
     TaskCreate,
@@ -17,6 +17,7 @@ from schemas import (
     TaskProgressSubmit,
     TaskResponse,
     TaskListResponse,
+    TaskLogResponse,
     TaskStatus,
     ApiResponse,
 )
@@ -52,9 +53,13 @@ async def create_task(payload: TaskCreate, db: AsyncSession = Depends(get_db)):
         target_machine_id=payload.target_machine_id,
         project_id=payload.project_id,
         issue_id=payload.issue_id,
+        max_retries=payload.max_retries,
     )
     db.add(task)
     await db.flush()
+
+    log = TaskLog(task_id=task.id, event_type="created", message="Task created")
+    db.add(log)
 
     try:
         await ws_manager.broadcast(
@@ -191,7 +196,6 @@ async def submit_result(
         raise HTTPException(status_code=404, detail="Task not found")
 
     now = datetime.now(timezone.utc)
-    task.completed_at = now
     task.result = {
         "exit_code": payload.exit_code,
         "stdout": payload.stdout,
@@ -204,10 +208,36 @@ async def submit_result(
         task.work_dir = payload.work_dir
 
     if payload.error_type:
-        task.status = "failed"
-        task.error_message = payload.stderr or payload.error_type
+        # Check retry eligibility
+        if task.retry_count < task.max_retries:
+            task.retry_count += 1
+            task.status = "pending"
+            task.error_message = None
+            log = TaskLog(
+                task_id=task.id,
+                event_type="retrying",
+                message=f"Retry {task.retry_count}/{task.max_retries}: {payload.stderr or payload.error_type}",
+            )
+            db.add(log)
+        else:
+            task.status = "failed"
+            task.completed_at = now
+            task.error_message = payload.stderr or payload.error_type
+            log = TaskLog(
+                task_id=task.id,
+                event_type="failed",
+                message=task.error_message,
+            )
+            db.add(log)
     else:
         task.status = "completed"
+        task.completed_at = now
+        log = TaskLog(
+            task_id=task.id,
+            event_type="completed",
+            message=f"Exit code: {payload.exit_code}",
+        )
+        db.add(log)
 
     try:
         await ws_manager.broadcast(
@@ -237,7 +267,6 @@ async def task_callback(
         raise HTTPException(status_code=404, detail="Task not found")
 
     now = datetime.now(timezone.utc)
-    task.completed_at = now
     task.result = {
         "exit_code": payload.exit_code,
         "stdout": payload.stdout,
@@ -250,10 +279,35 @@ async def task_callback(
         task.work_dir = payload.work_dir
 
     if payload.error_type:
-        task.status = "failed"
-        task.error_message = payload.stderr or payload.error_type
+        if task.retry_count < task.max_retries:
+            task.retry_count += 1
+            task.status = "pending"
+            task.error_message = None
+            log = TaskLog(
+                task_id=task.id,
+                event_type="retrying",
+                message=f"Retry {task.retry_count}/{task.max_retries}: {payload.stderr or payload.error_type}",
+            )
+            db.add(log)
+        else:
+            task.status = "failed"
+            task.completed_at = now
+            task.error_message = payload.stderr or payload.error_type
+            log = TaskLog(
+                task_id=task.id,
+                event_type="failed",
+                message=task.error_message,
+            )
+            db.add(log)
     else:
         task.status = "completed"
+        task.completed_at = now
+        log = TaskLog(
+            task_id=task.id,
+            event_type="completed",
+            message=f"Exit code: {payload.exit_code}",
+        )
+        db.add(log)
 
     try:
         await ws_manager.broadcast(
@@ -436,4 +490,32 @@ async def claim_task(
     return ApiResponse(
         data=TaskListResponse.model_validate(task).model_dump(mode="json"),
         message="Task claimed successfully",
+    )
+
+
+# ── Task Logs ──
+
+
+@router.get("/{task_uuid}/logs", response_model=ApiResponse)
+async def list_task_logs(
+    task_uuid: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """List all logs for a task (event history)."""
+    stmt = select(Task).where(Task.id == task_uuid)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    logs_stmt = (
+        select(TaskLog)
+        .where(TaskLog.task_id == task_uuid)
+        .order_by(TaskLog.created_at.desc())
+    )
+    logs_result = await db.execute(logs_stmt)
+    logs = logs_result.scalars().all()
+
+    return ApiResponse(
+        data=[TaskLogResponse.model_validate(l).model_dump(mode="json") for l in logs]
     )

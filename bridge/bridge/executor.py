@@ -29,6 +29,10 @@ class AgentExecutor:
         prior_session_id: str | None = None,
         prior_work_dir: str | None = None,
         on_output: Callable[[str, str], None] | None = None,
+        agent_instructions: str | None = None,
+        model: str | None = None,
+        custom_args: list[str] | None = None,
+        mcp_config: dict | None = None,
     ) -> dict:
         raise NotImplementedError
 
@@ -118,9 +122,17 @@ class ClaudeCodeExecutor(AgentExecutor):
         prior_session_id: str | None = None,
         prior_work_dir: str | None = None,
         on_output: Callable[[str, str], None] | None = None,
+        agent_instructions: str | None = None,
+        model: str | None = None,
+        custom_args: list[str] | None = None,
+        mcp_config: dict | None = None,
     ) -> dict:
         self._cancelled = False
-        logger.info(f"Executing Claude Code: {instruction[:100]}...")
+        # Prepend agent instructions if provided
+        effective_instruction = instruction
+        if agent_instructions:
+            effective_instruction = f"{agent_instructions}\n\n---\n\n{instruction}"
+        logger.info(f"Executing Claude Code: {effective_instruction[:100]}...")
         effective_workdir = prior_work_dir or workdir
         if prior_work_dir:
             logger.info(f"Resuming prior work_dir: {prior_work_dir}")
@@ -128,9 +140,13 @@ class ClaudeCodeExecutor(AgentExecutor):
             resolved_path, use_shell = _resolve_executable(self.agent_path)
 
             args = ["--print", "--permission-mode", "bypassPermissions"]
+            if model:
+                args.extend(["--model", model])
             if prior_session_id:
                 args.extend(["--resume", prior_session_id])
-            args.append(instruction)
+            if custom_args:
+                args.extend(custom_args)
+            args.append(effective_instruction)
 
             if use_shell:
                 arg_str = " ".join(f'"{a.replace(chr(34), chr(92)+chr(34))}"' for a in args)
@@ -205,6 +221,10 @@ class GenericAgentExecutor(AgentExecutor):
         prior_session_id: str | None = None,
         prior_work_dir: str | None = None,
         on_output: Callable[[str, str], None] | None = None,
+        agent_instructions: str | None = None,
+        model: str | None = None,
+        custom_args: list[str] | None = None,
+        mcp_config: dict | None = None,
     ) -> dict:
         self._cancelled = False
         logger.info(f"Executing {self.agent_path}: {instruction[:100]}...")
@@ -288,6 +308,10 @@ class CodexExecutor(AgentExecutor):
         prior_session_id: str | None = None,
         prior_work_dir: str | None = None,
         on_output: Callable[[str, str], None] | None = None,
+        agent_instructions: str | None = None,
+        model: str | None = None,
+        custom_args: list[str] | None = None,
+        mcp_config: dict | None = None,
     ) -> dict:
         self._cancelled = False
         logger.info(f"Executing Codex CLI: {instruction[:100]}...")
@@ -366,6 +390,10 @@ class StubExecutor(AgentExecutor):
         prior_session_id: str | None = None,
         prior_work_dir: str | None = None,
         on_output: Callable[[str, str], None] | None = None,
+        agent_instructions: str | None = None,
+        model: str | None = None,
+        custom_args: list[str] | None = None,
+        mcp_config: dict | None = None,
     ) -> dict:
         logger.warning(f"StubExecutor: agent '{self.agent_path}' CLI not verified. Instruction: {instruction[:100]}")
         return {

@@ -51,7 +51,8 @@ export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0
 
   const isOnline = machine.status === "online";
   const isEnabled = machine.is_enabled;
-  const isBusy = runningTasks.length > 0;
+  const isBusy = machine.agent_status === "busy";
+  const isIdle = machine.agent_status === "idle";
 
   const updateMutation = useMutation({
     mutationFn: (data: { is_enabled?: boolean }) => updateMachine(machine.id, data),
@@ -95,16 +96,16 @@ export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0
             <Badge variant={isOnline ? "default" : "secondary"}>
               {isOnline ? "在线" : "离线"}
             </Badge>
-            <Badge variant={isEnabled ? "outline" : "destructive"}>
-              {isEnabled ? "可用" : "禁用"}
+            <Badge variant={isBusy ? "default" : isIdle ? "outline" : "secondary"}>
+              {isBusy ? "运行中" : isIdle ? "闲置" : "离线"}
             </Badge>
           </div>
         </div>
         <div className="flex items-center gap-2 pt-2">
-          <Badge variant={isBusy ? "default" : "outline"}>
-            {isBusy ? `执行中 (${runningTasks.length})` : "空闲"}
-          </Badge>
           <Badge variant="outline">{machine.agent_type}</Badge>
+          {machine.agent_version && (
+            <span className="text-xs text-muted-foreground font-mono">{machine.agent_version}</span>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

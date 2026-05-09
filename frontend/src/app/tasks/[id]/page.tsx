@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { fetchTask, fetchMachines, fetchProjects, updateTask, cancelTask, Machine, Project } from "@/lib/api";
+import { fetchTask, fetchTaskLogs, fetchMachines, fetchProjects, updateTask, cancelTask, Machine, Project, TaskLog } from "@/lib/api";
 import { wsClient } from "@/lib/websocket";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
@@ -63,6 +63,12 @@ export default function TaskDetailPage() {
   const { data: projects } = useQuery({
     queryKey: ["projects"],
     queryFn: fetchProjects,
+  });
+
+  const { data: taskLogs } = useQuery({
+    queryKey: ["task-logs", taskId],
+    queryFn: () => fetchTaskLogs(taskId),
+    enabled: !!taskId,
   });
 
   const updateMutation = useMutation({
@@ -212,6 +218,10 @@ export default function TaskDetailPage() {
                 <div className="text-muted-foreground">所属项目</div>
                 <div>{getProjectName(task.project_id)}</div>
               </div>
+              <div>
+                <div className="text-muted-foreground">重试次数</div>
+                <div>{task.retry_count} / {task.max_retries}</div>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -312,6 +322,30 @@ export default function TaskDetailPage() {
               <pre className="text-xs bg-muted p-4 rounded-lg overflow-auto max-h-64">
                 {JSON.stringify(task.result, null, 2)}
               </pre>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Task Logs */}
+        {taskLogs && taskLogs.length > 0 && (
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>事件日志</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {taskLogs.map((log: TaskLog) => (
+                  <div key={log.id} className="flex items-start gap-3 text-sm">
+                    <span className="text-muted-foreground text-xs w-32 shrink-0">
+                      {formatTime(log.created_at)}
+                    </span>
+                    <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">
+                      {log.event_type}
+                    </span>
+                    <span className="flex-1">{log.message || "-"}</span>
+                  </div>
+                ))}
+              </div>
             </CardContent>
           </Card>
         )}

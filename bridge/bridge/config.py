@@ -207,6 +207,9 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
 
     # Auto-set project_root from current working directory if not configured
     if not cfg.machine.project_root:
-        cfg.machine.project_root = os.getcwd()
+        cwd = os.getcwd()
+        if os.path.basename(cwd) == ".dus":
+            cwd = os.path.dirname(cwd)
+        cfg.machine.project_root = cwd
 
     return cfg

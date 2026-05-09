@@ -21,6 +21,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PlusIcon, EyeIcon, XIcon, HandIcon } from "lucide-react";
+import { toast } from "sonner";
+import { SkeletonTable } from "@/components/ui/skeleton";
 
 type StatusFilter = "all" | "pending" | "running" | "completed" | "failed" | "unassigned";
 
@@ -69,7 +71,9 @@ export default function TasksPage() {
     mutationFn: cancelTask,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      toast.success("任务已取消");
     },
+    onError: (err: Error) => toast.error(`取消失败: ${err.message}`),
   });
 
   const claimMutation = useMutation({
@@ -78,7 +82,9 @@ export default function TasksPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["unassigned"] });
+      toast.success("任务已领取");
     },
+    onError: (err: Error) => toast.error(`领取失败: ${err.message}`),
   });
 
   const getMachineName = (machineId: string | null): string => {
@@ -119,7 +125,7 @@ export default function TasksPage() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="py-8 text-center text-muted-foreground">加载中...</div>
+            <SkeletonTable rows={6} cols={6} />
           ) : filteredTasks.length === 0 ? (
             <div className="py-8 text-center text-muted-foreground">
               暂无{statusFilter === "all" ? "" : STATUS_TABS.find((t) => t.value === statusFilter)?.label}任务

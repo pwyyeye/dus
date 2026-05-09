@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
 
 from config import get_settings
-from routers import machines, tasks, projects, templates, issues, ws
+from routers import machines, tasks, projects, templates, issues, ws, agents, comments, labels, autopilots, skills, inbox, analytics
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -88,5 +88,12 @@ app.include_router(tasks.router, prefix="/api/v1", dependencies=[Security(verify
 app.include_router(projects.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
 app.include_router(templates.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
 app.include_router(issues.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(agents.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(comments.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(labels.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(autopilots.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(skills.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(inbox.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+app.include_router(analytics.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
 # WebSocket router (no HTTP prefix; auth handled inside the endpoint)
 app.include_router(ws.router)

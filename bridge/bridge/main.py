@@ -197,7 +197,11 @@ class Bridge:
             return
 
         # Remote execution
-        logger.info(f"Task {task_name}: executing with {agent_type}")
+        agent_config = task.get("agent_config")
+        if agent_config:
+            logger.info(f"Task {task_name}: executing with agent '{agent_config.get('name', 'unknown')}'")
+        else:
+            logger.info(f"Task {task_name}: executing with {agent_type}")
         if prior_session_id or prior_work_dir:
             logger.info(f"Task {task_name}: resuming session_id={prior_session_id}, work_dir={prior_work_dir}")
         await self.api.update_task_status(task_id, "running")
@@ -217,6 +221,15 @@ class Bridge:
             "DUS_MACHINE_ID": self.config.machine.machine_id,
             "DUS_TASK_ID": task_name,
         }
+        # Merge agent custom_env if present
+        if agent_config and agent_config.get("custom_env"):
+            env_vars.update(agent_config["custom_env"])
+
+        # Extract agent execution params
+        agent_instructions = agent_config.get("instructions") if agent_config else None
+        agent_model = agent_config.get("model") if agent_config else None
+        agent_custom_args = agent_config.get("custom_args") if agent_config else None
+        agent_mcp_config = agent_config.get("mcp_config") if agent_config else None
 
         # Progress buffering: accumulate output and flush every 2 seconds
         stdout_buffer: list[str] = []
@@ -259,6 +272,10 @@ class Bridge:
                 prior_session_id=prior_session_id,
                 prior_work_dir=prior_work_dir,
                 on_output=on_output,
+                agent_instructions=agent_instructions,
+                model=agent_model,
+                custom_args=agent_custom_args,
+                mcp_config=agent_mcp_config,
             )
         finally:
             progress_stop.set()

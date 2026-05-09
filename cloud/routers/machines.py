@@ -6,7 +6,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Machine, Task, Project
+from models import Machine, Task, Project, Agent
 from schemas import (
     MachineCreate,
     MachineResponse,
@@ -17,6 +17,7 @@ from schemas import (
     ApiResponse,
     PollResponse,
     PollTaskResponse,
+    AgentConfig,
     MachineUpdateStatus,
     MachineDashboardResponse,
     TaskListResponse,
@@ -286,11 +287,40 @@ async def poll_tasks(
             return prior_task.session_id, prior_task.work_dir
         return None, None
 
+    # Helper: resolve agent config from issue's agent assignee
+    async def resolve_agent_config(issue_id: uuid.UUID | None) -> AgentConfig | None:
+        if not issue_id:
+            return None
+        from models import Issue as IssueModel
+        issue_stmt = select(IssueModel).where(IssueModel.id == issue_id)
+        issue_result = await db.execute(issue_stmt)
+        issue_obj = issue_result.scalar_one_or_none()
+        if not issue_obj or issue_obj.assignee_type != "agent" or not issue_obj.assignee_id:
+            return None
+        agent_stmt = select(Agent).where(
+            Agent.id == issue_obj.assignee_id,
+            Agent.is_enabled == True,
+        )
+        agent_result = await db.execute(agent_stmt)
+        agent_obj = agent_result.scalar_one_or_none()
+        if not agent_obj:
+            return None
+        return AgentConfig(
+            agent_id=str(agent_obj.id),
+            name=agent_obj.name,
+            instructions=agent_obj.instructions,
+            model=agent_obj.model,
+            custom_env=agent_obj.custom_env,
+            custom_args=agent_obj.custom_args,
+            mcp_config=agent_obj.mcp_config,
+        )
+
     # Claim unassigned tasks
     for task in unassigned_tasks:
         task.target_machine_id = machine.id
         task.status = "dispatched"
         prior_session, prior_workdir = await resolve_prior_session(task.issue_id)
+        agent_config = await resolve_agent_config(task.issue_id)
         poll_tasks_out.append(
             PollTaskResponse(
                 id=task.id,
@@ -302,6 +332,7 @@ async def poll_tasks(
                 issue_id=task.issue_id,
                 prior_session_id=prior_session,
                 prior_work_dir=prior_workdir,
+                agent_config=agent_config,
             )
         )
 
@@ -309,6 +340,7 @@ async def poll_tasks(
     for task in assigned_tasks:
         task.status = "dispatched"
         prior_session, prior_workdir = await resolve_prior_session(task.issue_id)
+        agent_config = await resolve_agent_config(task.issue_id)
         poll_tasks_out.append(
             PollTaskResponse(
                 id=task.id,
@@ -320,6 +352,7 @@ async def poll_tasks(
                 issue_id=task.issue_id,
                 prior_session_id=prior_session,
                 prior_work_dir=prior_workdir,
+                agent_config=agent_config,
             )
         )
 

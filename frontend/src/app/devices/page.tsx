@@ -25,14 +25,14 @@ export default function DevicesPage() {
 
   const onlineCount = machines?.filter((m) => m.status === "online").length ?? 0;
   const totalMachines = machines?.length ?? 0;
-  const enabledCount = machines?.filter((m) => m.is_enabled).length ?? 0;
-  const busyCount = dashboard?.filter((m) => m.running_tasks.length > 0).length ?? 0;
+  const idleCount = machines?.filter((m) => m.agent_status === "idle").length ?? 0;
+  const busyCount = machines?.filter((m) => m.agent_status === "busy").length ?? 0;
   const totalRunningTasks = dashboard?.reduce((acc, m) => acc + m.running_tasks.length, 0) ?? 0;
   const totalCompletedToday = dashboard?.reduce((acc, m) => acc + m.completed_tasks_count, 0) ?? 0;
 
   const stats = [
     { title: "在线设备", value: `${onlineCount} / ${totalMachines}`, desc: "当前在线 / 总注册" },
-    { title: "可用设备", value: `${enabledCount} / ${totalMachines}`, desc: "已启用设备" },
+    { title: "闲置设备", value: `${idleCount} / ${totalMachines}`, desc: "等待任务" },
     { title: "忙碌设备", value: busyCount, desc: "正在执行任务" },
     { title: "执行中任务", value: totalRunningTasks, desc: "已分派或运行中" },
     { title: "今日完成", value: totalCompletedToday, desc: "任务完成数" },
