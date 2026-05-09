@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime, timezone
 
@@ -7,6 +8,8 @@ from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
+
+logger = logging.getLogger(__name__)
 from models import Issue, Task, Machine, Agent, Label, IssueLabel, IssueDependency, Comment
 from schemas import (
     IssueCreate,
@@ -105,10 +108,13 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
     except Exception:
         pass
 
-    return ApiResponse(
-        data=IssueResponse.model_validate(issue).model_dump(mode="json"),
-        message="Issue created successfully",
-    )
+    try:
+        issue_data = IssueResponse.model_validate(issue).model_dump(mode="json")
+    except Exception as e:
+        logger.error(f"Failed to serialize issue {issue.id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal serialization error: {e}")
+
+    return ApiResponse(data=issue_data, message="Issue created successfully")
 
 
 @router.get("", response_model=ApiResponse)

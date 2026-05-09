@@ -1,4 +1,6 @@
+import asyncio
 from contextlib import asynccontextmanager
+from pathlib import Path
 import time
 import logging
 
@@ -19,6 +21,14 @@ async def lifespan(app: FastAPI):
     from database import engine, Base
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Run alembic migrations to add missing columns to existing tables
+    try:
+        from alembic.config import Config as AlembicConfig
+        from alembic import command as alembic_command
+        alembic_cfg = AlembicConfig(str(Path(__file__).parent / "alembic.ini"))
+        await asyncio.to_thread(alembic_command.upgrade, alembic_cfg, "head")
+    except Exception as e:
+        logger.warning(f"Alembic migration skipped/failed (non-fatal): {e}")
     # Start the reminder scheduler
     from scheduler import start_scheduler
     start_scheduler()

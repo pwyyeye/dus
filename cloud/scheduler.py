@@ -19,6 +19,9 @@ logger = logging.getLogger(__name__)
 # Module-level scheduler instance
 _scheduler: AsyncIOScheduler | None = None
 
+# In-memory reminder tracking (lost on restart, acceptable for dedup)
+_last_project_reminder: dict[str, datetime] = {}
+
 
 async def _check_stalled_projects() -> None:
     """Check for stalled projects and send reminders.
@@ -54,11 +57,10 @@ async def _check_stalled_projects() -> None:
                 threshold_hours = project.idle_threshold_hours
                 reminder_interval = project.reminder_interval_hours
 
-                # Check deduplication - use result dict for last_reminder_at
-                last_reminder = project.result.get("last_reminder_at") if project.result else None
+                # Check deduplication - use module-level dict for last_reminder_at
+                last_reminder = _last_project_reminder.get(str(project.id))
                 if last_reminder and reminder_interval > 0:
-                    last_reminder_time = datetime.fromisoformat(last_reminder)
-                    hours_since_reminder = (now - last_reminder_time).total_seconds() / 3600
+                    hours_since_reminder = (now - last_reminder).total_seconds() / 3600
                     if hours_since_reminder < reminder_interval:
                         logger.debug(
                             f"Skipping reminder for project {project.project_id} "
@@ -81,10 +83,8 @@ async def _check_stalled_projects() -> None:
                 title = f"⚠️ 项目闲置提醒: {project.project_name}"
                 success = await send_wechat_markdown(title, content)
 
-                # Update last_reminder_at in result
-                if project.result is None:
-                    project.result = {}
-                project.result["last_reminder_at"] = now.isoformat()
+                # Update last_reminder_at
+                _last_project_reminder[str(project.id)] = now
                 if success:
                     logger.info(f"Sent stalled project reminder: {project.project_id}")
 
