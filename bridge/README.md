@@ -142,7 +142,6 @@ dus stop
 |------|------|
 | `machine.machine_id` | 机器唯一标识（如 `mac-mini-lab`） |
 | `machine.machine_name` | 展示名称 |
-| `machine.agent_type` | Agent 类型：`claude_code` / `openclaw` / `hermes_agent` / `codex` |
 | `machine.agent_capability` | 能力：`remote_execution`（远程执行）或 `manual_only`（仅提醒） |
 | `machine.project_id` | 关联的项目 ID（自动领取/claim 时限定项目范围） |
 | `cloud.api_url` | 云端 API 地址 |

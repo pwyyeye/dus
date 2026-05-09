@@ -71,6 +71,7 @@ class MachineConfig:
     agent_capability: str = "remote_execution"
     project_id: str | None = None
     project_root: str | None = None
+    agent_type: str | None = None  # deprecated; ignored (auto-detected at runtime)
 
 
 @dataclass
