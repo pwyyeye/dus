@@ -25,6 +25,7 @@ interface TaskFormData {
   instruction: string;
   target_machine_id: string;
   project_id: string;
+  agent_cli_id: string;
 }
 
 interface TaskCreateModalProps {
@@ -66,11 +67,15 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
       instruction: "",
       target_machine_id: "",
       project_id: "",
+      agent_cli_id: "",
     },
   });
 
   const targetMachineId = watch("target_machine_id");
   const projectId = watch("project_id");
+
+  const selectedMachine = machines?.find((m: Machine) => m.id === targetMachineId);
+  const availableAgents = selectedMachine?.available_agents ?? [];
 
   const mutation = useMutation({
     mutationFn: createTask,
@@ -95,6 +100,7 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
       instruction: data.instruction,
       target_machine_id: data.target_machine_id || undefined,
       project_id: data.project_id || undefined,
+      agent_cli_id: data.agent_cli_id || undefined,
     });
   };
 
@@ -149,7 +155,7 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
             <Label htmlFor="task-machine">目标设备</Label>
             <Select
               value={targetMachineId || ""}
-              onValueChange={(val) => setValue("target_machine_id", val || "")}
+              onValueChange={(val) => { setValue("target_machine_id", val || ""); setValue("agent_cli_id", ""); }}
             >
               <SelectTrigger id="task-machine">
                 <SelectValue placeholder="不指定设备" />
@@ -158,12 +164,33 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
                 <SelectItem value="">不指定设备</SelectItem>
                 {machines?.map((m: Machine) => (
                   <SelectItem key={m.id} value={m.id}>
-                    {m.machine_name}
+                    {m.machine_name} ({(m.available_agents ?? []).map(a => a.agent_type).join(", ") || m.agent_type})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+
+          {targetMachineId && availableAgents.length > 1 && (
+            <div className="space-y-2">
+              <Label htmlFor="task-agent-cli">Agent CLI</Label>
+              <Select
+                value={watch("agent_cli_id") || ""}
+                onValueChange={(val) => setValue("agent_cli_id", val || "")}
+              >
+                <SelectTrigger id="task-agent-cli">
+                  <SelectValue placeholder="默认（第一个可用）" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableAgents.map((a: { cli_id?: string; agent_type: string; version: string }) => (
+                    <SelectItem key={a.cli_id || a.agent_type} value={a.cli_id || a.agent_type}>
+                      {a.agent_type} <span className="text-muted-foreground text-xs ml-1">v{a.version}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className="space-y-2">
             <Label htmlFor="task-project">关联项目</Label>

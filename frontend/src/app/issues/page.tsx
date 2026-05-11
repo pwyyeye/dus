@@ -70,6 +70,8 @@ export default function IssuesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sortKey, setSortKey] = useState<SortKey>("updated");
   const [open, setOpen] = useState(false);
+  const [selectedAssigneeType, setSelectedAssigneeType] = useState("");
+  const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["issues", statusFilter, labelFilter],
@@ -174,11 +176,13 @@ export default function IssuesPage() {
     const priority = fd.get("priority") as string;
     const assigneeType = fd.get("assignee_type") as string;
     const assigneeId = fd.get("assignee_id") as string;
+    const agentCliId = fd.get("agent_cli_id") as string;
     if (!title.trim()) return;
     mutation.mutate({
       title, description, priority,
       assignee_type: assigneeType || undefined,
       assignee_id: assigneeId || undefined,
+      agent_cli_id: agentCliId || undefined,
     });
     form.reset();
   };
@@ -353,7 +357,7 @@ export default function IssuesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="issue-assignee-type">分配方式</Label>
-              <Select name="assignee_type" defaultValue="">
+              <Select value={selectedAssigneeType} onValueChange={(v) => { setSelectedAssigneeType(v || ""); setSelectedAssigneeId(""); }}>
                 <SelectTrigger id="issue-assignee-type">
                   <SelectValue placeholder="不分配（放入任务池）" />
                 </SelectTrigger>
@@ -364,31 +368,60 @@ export default function IssuesPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="issue-assignee">目标</Label>
-              <Select name="assignee_id">
-                <SelectTrigger id="issue-assignee">
-                  <SelectValue placeholder="选择设备或智能体..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">—</SelectItem>
-                  <SelectGroup>
-                    <SelectLabel>设备</SelectLabel>
+            {selectedAssigneeType === "machine" && (
+              <div className="space-y-2">
+                <Label htmlFor="issue-assignee">目标设备</Label>
+                <Select value={selectedAssigneeId} onValueChange={(v) => setSelectedAssigneeId(v || "")}>
+                  <SelectTrigger id="issue-assignee">
+                    <SelectValue placeholder="选择设备..." />
+                  </SelectTrigger>
+                  <SelectContent>
                     {(machines ?? []).map((m: Machine) => (
-                      <SelectItem key={`machine-${m.id}`} value={m.id}>
-                        {m.machine_name} ({m.agent_type})
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.machine_name} ({(m.available_agents ?? []).map(a => a.agent_type).join(", ") || m.agent_type})
                       </SelectItem>
                     ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>智能体</SelectLabel>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {selectedAssigneeType === "agent" && (
+              <div className="space-y-2">
+                <Label htmlFor="issue-assignee">目标智能体</Label>
+                <Select value={selectedAssigneeId} onValueChange={(v) => setSelectedAssigneeId(v || "")}>
+                  <SelectTrigger id="issue-assignee">
+                    <SelectValue placeholder="选择智能体..." />
+                  </SelectTrigger>
+                  <SelectContent>
                     {(agents ?? []).map((a: Agent) => (
-                      <SelectItem key={`agent-${a.id}`} value={a.id}>{a.name}</SelectItem>
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
                     ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {(() => {
+              const selectedMachine = (machines ?? []).find(m => m.id === selectedAssigneeId);
+              const availableAgents = selectedMachine?.available_agents;
+              if (selectedAssigneeType !== "machine" || !selectedAssigneeId || !availableAgents || availableAgents.length <= 1) return null;
+              return (
+                <div className="space-y-2">
+                  <Label htmlFor="issue-agent-cli">Agent CLI</Label>
+                  <Select name="agent_cli_id" defaultValue="">
+                    <SelectTrigger id="issue-agent-cli">
+                      <SelectValue placeholder="默认（第一个可用）" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableAgents.map((a: { cli_id?: string; agent_type: string; version: string }) => (
+                        <SelectItem key={a.cli_id || a.agent_type} value={a.cli_id || a.agent_type}>
+                          {a.agent_type} <span className="text-muted-foreground text-xs ml-1">v{a.version}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>取消</Button>
               <Button type="submit" disabled={mutation.isPending}>

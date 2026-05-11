@@ -76,6 +76,7 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
         assignee_id=payload.assignee_id,
         project_id=payload.project_id,
         parent_issue_id=payload.parent_issue_id,
+        agent_cli_id=payload.agent_cli_id,
     )
     db.add(issue)
     await db.flush()
@@ -95,6 +96,7 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
             project_id=issue.project_id,
             target_machine_id=target_machine_id,
             issue_id=issue.id,
+            agent_cli_id=issue.agent_cli_id,
             status="pending",
         )
         db.add(task)
@@ -242,6 +244,8 @@ async def update_issue(
         issue.assignee_id = payload.assignee_id
     if payload.project_id is not None:
         issue.project_id = payload.project_id
+    if payload.agent_cli_id is not None:
+        issue.agent_cli_id = payload.agent_cli_id
     if payload.parent_issue_id is not None:
         # Prevent self-reference and circular reference
         if payload.parent_issue_id == issue_uuid:
@@ -289,6 +293,7 @@ async def update_issue(
                 project_id=issue.project_id,
                 target_machine_id=target_machine_id,
                 issue_id=issue.id,
+                agent_cli_id=issue.agent_cli_id,
                 status="pending",
             )
             db.add(new_task)

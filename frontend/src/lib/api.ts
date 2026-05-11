@@ -134,6 +134,7 @@ export interface Issue {
   assignee_id: string | null;
   project_id: string | null;
   parent_issue_id: string | null;
+  agent_cli_id?: string | null;
   created_at: string;
   updated_at: string;
   tasks?: Task[];
@@ -344,6 +345,7 @@ export async function createIssue(data: {
   project_id?: string;
   parent_issue_id?: string;
   label_ids?: string[];
+  agent_cli_id?: string;
 }): Promise<Issue> {
   const res = await request<ApiResponse<Issue>>("/issues", {
     method: "POST",

@@ -112,6 +112,9 @@ class Issue(Base):
     parent_issue_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(), ForeignKey("issues.id"), nullable=True
     )
+    # Agent CLI to use for auto-dispatched task
+    agent_cli_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
 

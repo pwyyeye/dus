@@ -133,11 +133,9 @@ function MachineRow({ machine }: { machine: Machine }) {
           <div className="flex items-center gap-1">
             {machine.status === "online" && machine.agent_capability === "remote_execution" && (
               <Dialog open={dispatchOpen} onOpenChange={(open) => { setDispatchOpen(open); }}>
-                <DialogTrigger>
-                  <Button size="icon-xs" variant="ghost" onClick={(e) => e.stopPropagation()}>
+                <DialogTrigger render={<Button size="icon-xs" variant="ghost" onClick={(e) => e.stopPropagation()}>
                     <span title="下发任务">▶</span>
-                  </Button>
-                </DialogTrigger>
+                  </Button>} />
                 <DialogContent onClick={(e) => e.stopPropagation()}>
                   <DialogHeader>
                     <DialogTitle>向 {machine.machine_name} 下发任务</DialogTitle>

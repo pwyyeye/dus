@@ -282,6 +282,7 @@ class IssueCreate(BaseModel):
     project_id: uuid.UUID | None = None
     parent_issue_id: uuid.UUID | None = None
     label_ids: list[uuid.UUID] = Field(default_factory=list)
+    agent_cli_id: str | None = Field(default=None, description="Agent CLI类型，如 claude_code, codex, openclaw, kimi")
 
 
 class IssueUpdate(BaseModel):
@@ -294,6 +295,7 @@ class IssueUpdate(BaseModel):
     project_id: uuid.UUID | None = None
     parent_issue_id: uuid.UUID | None = None
     label_ids: list[uuid.UUID] | None = None
+    agent_cli_id: str | None = Field(default=None, description="Agent CLI类型")
 
 
 class IssueResponse(BaseModel):
@@ -307,6 +309,7 @@ class IssueResponse(BaseModel):
     assignee_id: uuid.UUID | None
     project_id: uuid.UUID | None
     parent_issue_id: uuid.UUID | None
+    agent_cli_id: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -323,6 +326,7 @@ class IssueListResponse(BaseModel):
     assignee_id: uuid.UUID | None
     project_id: uuid.UUID | None
     parent_issue_id: uuid.UUID | None
+    agent_cli_id: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
