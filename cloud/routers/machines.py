@@ -1,16 +1,18 @@
+import secrets
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Machine, Task, Project, Agent
+from models import Machine, Task, Project, Agent, ApiBan
 from schemas import (
     MachineCreate,
     MachineResponse,
     MachineListResponse,
+    MachineRegisterResponse,
     MachineStatus,
     AgentStatus,
     AgentType,
@@ -21,10 +23,14 @@ from schemas import (
     MachineUpdateStatus,
     MachineDashboardResponse,
     TaskListResponse,
+    ApiBanCreate,
+    ApiBanResponse,
 )
 from connection_manager import manager as ws_manager
 
 router = APIRouter(prefix="/machines", tags=["machines"])
+# Public router: endpoints that don't require API key auth
+public_router = APIRouter(prefix="/machines", tags=["machines"])
 
 
 @router.post("", response_model=ApiResponse)
@@ -91,6 +97,137 @@ async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(ge
         data=MachineListResponse.model_validate(machine).model_dump(mode="json"),
         message="Machine registered successfully",
     )
+
+
+@public_router.post("/register", response_model=ApiResponse)
+async def register_machine_with_key(
+    payload: MachineCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+):
+    """Register a new machine and auto-generate an API key.
+
+    This endpoint does NOT require authentication. The server generates a
+    random API key, stores it on the Machine record along with the client IP,
+    and returns it to the bridge for persistent use.
+    """
+    client_ip = request.client.host if request.client else None
+
+    # Auto-create project if needed
+    resolved_project_id = None
+    if payload.project_id:
+        stmt = select(Project).where(Project.project_id == payload.project_id)
+        result = await db.execute(stmt)
+        project = result.scalar_one_or_none()
+        if not project:
+            project = Project(
+                project_id=payload.project_id,
+                project_name=payload.project_id,
+                root_path=payload.project_root,
+            )
+            db.add(project)
+            await db.flush()
+        elif payload.project_root and not project.root_path:
+            project.root_path = payload.project_root
+        resolved_project_id = project.id
+
+    stmt = select(Machine).where(Machine.machine_id == payload.machine_id)
+    result = await db.execute(stmt)
+    machine = result.scalar_one_or_none()
+
+    api_key = secrets.token_hex(32)
+
+    if machine:
+        machine.machine_name = payload.machine_name
+        machine.agent_type = payload.agent_type.value
+        machine.agent_capability = payload.agent_capability.value
+        machine.agent_version = payload.agent_version
+        if payload.available_agents is not None:
+            machine.available_agents = payload.available_agents
+        machine.status = "online"
+        machine.project_id = resolved_project_id or machine.project_id
+        machine.last_poll_at = datetime.now(timezone.utc)
+        machine.api_key = api_key
+        machine.ip_address = client_ip
+    else:
+        machine = Machine(
+            machine_id=payload.machine_id,
+            machine_name=payload.machine_name,
+            agent_type=payload.agent_type.value,
+            agent_capability=payload.agent_capability.value,
+            agent_version=payload.agent_version,
+            available_agents=payload.available_agents or [],
+            status="online",
+            project_id=resolved_project_id,
+            last_poll_at=datetime.now(timezone.utc),
+            api_key=api_key,
+            ip_address=client_ip,
+        )
+        db.add(machine)
+
+    await db.flush()
+
+    try:
+        await ws_manager.broadcast(
+            "machine.updated",
+            {"id": str(machine.id), "status": machine.status, "machine_id": machine.machine_id},
+        )
+    except Exception:
+        pass
+
+    return ApiResponse(
+        data=MachineRegisterResponse.model_validate(machine).model_dump(mode="json"),
+        message="Machine registered successfully",
+    )
+
+
+@router.post("/ban", response_model=ApiResponse)
+async def ban_target(
+    payload: ApiBanCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Ban an IP address or API key."""
+    # Check if already banned
+    stmt = select(ApiBan).where(
+        ApiBan.target_type == payload.target_type,
+        ApiBan.target_value == payload.target_value,
+        ApiBan.is_active == True,
+    )
+    result = await db.execute(stmt)
+    existing = result.scalar_one_or_none()
+    if existing:
+        return ApiResponse(message="Already banned", data=ApiBanResponse.model_validate(existing).model_dump(mode="json"))
+
+    ban = ApiBan(
+        target_type=payload.target_type,
+        target_value=payload.target_value,
+        reason=payload.reason,
+    )
+    db.add(ban)
+    await db.flush()
+
+    return ApiResponse(
+        data=ApiBanResponse.model_validate(ban).model_dump(mode="json"),
+        message="Ban created successfully",
+    )
+
+
+@router.delete("/ban/{ban_id}", response_model=ApiResponse)
+async def unban_target(
+    ban_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Deactivate a ban (unban)."""
+    stmt = select(ApiBan).where(ApiBan.id == ban_id)
+    result = await db.execute(stmt)
+    ban = result.scalar_one_or_none()
+    if not ban:
+        raise HTTPException(status_code=404, detail="Ban not found")
+
+    ban.is_active = False
+    await db.flush()
+
+    return ApiResponse(message="Ban removed successfully")
 
 
 @router.get("", response_model=ApiResponse)

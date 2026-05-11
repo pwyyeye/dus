@@ -62,6 +62,8 @@ class Machine(Base):
     project_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(), ForeignKey("projects.id"), nullable=True
     )
+    api_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     last_poll_at: Mapped[datetime | None] = mapped_column(nullable=True)
     registered_at: Mapped[datetime] = mapped_column(default=utcnow)
 
@@ -71,6 +73,7 @@ class Machine(Base):
     __table_args__ = (
         Index("idx_machines_status", "status"),
         Index("idx_machines_agent_type", "agent_type"),
+        Index("idx_machines_api_key", "api_key"),
     )
 
 
@@ -457,4 +460,22 @@ class Autopilot(Base):
         Index("idx_autopilots_project", "project_id"),
         Index("idx_autopilots_enabled", "is_enabled"),
         Index("idx_autopilots_next_run", "next_run_at"),
+    )
+
+
+class ApiBan(Base):
+    """Ban an IP address or API key from accessing the system."""
+
+    __tablename__ = "api_bans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(), primary_key=True, default=uuid.uuid4)
+    target_type: Mapped[str] = mapped_column(String(10), nullable=False)  # "ip" or "key"
+    target_value: Mapped[str] = mapped_column(String(255), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    __table_args__ = (
+        Index("idx_api_bans_type_value", "target_type", "target_value"),
+        Index("idx_api_bans_active", "is_active"),
     )

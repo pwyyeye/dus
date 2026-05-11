@@ -36,11 +36,67 @@ class ApiClient:
             timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0),
             headers=self.headers,
         )
-        # agent_type → cloud-side machine UUID
-        self.machine_uuids: dict[str, str] = {}
+        # cloud-side machine UUID (single device = single machine)
+        self._machine_uuid: str | None = None
 
     async def close(self):
         await self._client.aclose()
+
+    async def register_and_get_key(
+        self,
+        machine_id: str,
+        machine_name: str,
+        agent_type: str,
+        agent_capability: str,
+        agent_version: str | None = None,
+        project_id: str | None = None,
+        project_root: str | None = None,
+        available_agents: list[dict] | None = None,
+    ) -> str | None:
+        """Register a new machine via the public /register endpoint and get an API key.
+
+        This call does NOT use the existing client (which may have an invalid key).
+        Returns the generated API key on success, None on failure.
+        """
+        url = f"{self.base_url}/machines/register"
+        payload = {
+            "machine_id": machine_id,
+            "machine_name": machine_name,
+            "agent_type": agent_type,
+            "agent_capability": agent_capability,
+        }
+        if agent_version:
+            payload["agent_version"] = agent_version
+        if project_id:
+            payload["project_id"] = project_id
+        if project_root:
+            payload["project_root"] = project_root
+        if available_agents:
+            payload["available_agents"] = available_agents
+
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=30.0)) as client:
+                    resp = await client.post(url, json=payload)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if data.get("success") and data.get("data", {}).get("api_key"):
+                        return data["data"]["api_key"]
+                    logger.error(f"Register response missing api_key: {data}")
+                    return None
+            except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
+                logger.warning(f"Register network error (attempt {attempt}/{MAX_RETRIES}): {e}")
+                if attempt < MAX_RETRIES:
+                    import asyncio
+                    await asyncio.sleep(RETRY_DELAY)
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Register HTTP {e.response.status_code}: {e.response.text}")
+                return None
+            except Exception as e:
+                logger.error(f"Register unexpected error: {e}")
+                return None
+        logger.error(f"All {MAX_RETRIES} register retries failed")
+        return None
 
     async def _request(self, method: str, path: str, **kwargs) -> dict | None:
         """Make HTTP request with retry."""
@@ -66,12 +122,13 @@ class ApiClient:
 
     async def register_machine(
         self,
+        machine_id: str,
+        machine_name: str,
         agent_type: str,
         agent_version: str | None = None,
+        available_agents: list[dict] | None = None,
     ) -> bool:
-        """Register one agent CLI as a machine with the cloud."""
-        machine_id = f"{self.machine_config.machine_id}-{agent_type}"
-        machine_name = f"{self.machine_config.machine_name} - {agent_type}"
+        """Register this device as a single machine with all detected agents."""
         payload = {
             "machine_id": machine_id,
             "machine_name": machine_name,
@@ -84,31 +141,33 @@ class ApiClient:
             payload["project_root"] = self.machine_config.project_root
         if agent_version:
             payload["agent_version"] = agent_version
+        if available_agents:
+            payload["available_agents"] = available_agents
 
         result = await self._request("POST", "/machines", json=payload)
         if result and result.get("success"):
-            self.machine_uuids[agent_type] = result["data"]["id"]
-            logger.info(f"Registered machine: {machine_id} (agent={agent_type}, uuid={self.machine_uuids[agent_type]})")
+            self._machine_uuid = result["data"]["id"]
+            logger.info(f"Registered machine: {machine_id} (uuid={self._machine_uuid})")
             return True
-        logger.error(f"Failed to register machine for agent_type={agent_type}")
+        logger.error(f"Failed to register machine {machine_id}")
         return False
 
-    def is_registered(self, agent_type: str) -> bool:
-        return agent_type in self.machine_uuids
+    @property
+    def is_registered(self) -> bool:
+        return self._machine_uuid is not None
 
-    async def poll_tasks(self, agent_type: str) -> list[dict]:
-        """Poll for pending tasks for a specific agent CLI machine."""
-        machine_uuid = self.machine_uuids.get(agent_type)
-        if not machine_uuid:
-            logger.warning(f"Machine not registered for {agent_type}, skipping poll")
+    async def poll_tasks(self) -> list[dict]:
+        """Poll for pending tasks for this device."""
+        if not self._machine_uuid:
+            logger.warning("Machine not registered, skipping poll")
             return []
 
-        path = f"/machines/{machine_uuid}/poll"
+        path = f"/machines/{self._machine_uuid}/poll"
         result = await self._request("GET", path)
         if result and "tasks" in result:
             tasks = result["tasks"]
             if tasks:
-                logger.info(f"Polled {len(tasks)} task(s) for {agent_type}")
+                logger.info(f"Polled {len(tasks)} task(s)")
             return tasks
         return []
 
@@ -156,10 +215,9 @@ class ApiClient:
         result = await self._request("POST", f"/tasks/{task_id}/progress", json=payload)
         return bool(result and result.get("success"))
 
-    async def update_agent_status(self, agent_type: str, agent_status: str) -> bool:
-        """Update agent status (idle/busy/offline) for a specific agent CLI machine."""
-        machine_uuid = self.machine_uuids.get(agent_type)
-        if not machine_uuid:
+    async def update_agent_status(self, agent_status: str) -> bool:
+        """Update agent status (idle/busy/offline) for this device."""
+        if not self._machine_uuid:
             return False
-        result = await self._request("PATCH", f"/machines/{machine_uuid}", json={"agent_status": agent_status})
+        result = await self._request("PATCH", f"/machines/{self._machine_uuid}", json={"agent_status": agent_status})
         return bool(result and result.get("success"))

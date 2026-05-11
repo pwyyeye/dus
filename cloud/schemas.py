@@ -155,6 +155,20 @@ class MachineUpdateStatus(BaseModel):
     agent_version: str | None = None
 
 
+class MachineRegisterResponse(BaseModel):
+    id: uuid.UUID
+    machine_id: str
+    machine_name: str
+    agent_type: AgentType
+    agent_capability: AgentCapability
+    agent_version: str | None = None
+    api_key: str
+    status: MachineStatus
+    project_id: uuid.UUID | None = None
+
+    model_config = {"from_attributes": True}
+
+
 # ── Task Schemas ──
 
 
@@ -638,5 +652,25 @@ class AgentListResponse(BaseModel):
     updated_at: datetime
     machine: MachineListResponse | None = None
     skills: list["SkillResponse"] = []
+
+    model_config = {"from_attributes": True}
+
+
+# ── ApiBan Schemas ──
+
+
+class ApiBanCreate(BaseModel):
+    target_type: str = Field(..., pattern="^(ip|key)$")
+    target_value: str = Field(..., max_length=255)
+    reason: str | None = Field(default=None, max_length=1000)
+
+
+class ApiBanResponse(BaseModel):
+    id: uuid.UUID
+    target_type: str
+    target_value: str
+    reason: str | None
+    is_active: bool
+    created_at: datetime
 
     model_config = {"from_attributes": True}

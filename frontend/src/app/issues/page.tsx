@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchIssues, createIssue, Issue, fetchMachines, fetchAgents, fetchLabels,
+  fetchIssues, createIssue, updateIssue, Issue, fetchMachines, fetchAgents, fetchLabels,
   Machine, Agent, Label as LabelType,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/table";
 import { PlusIcon, EyeIcon, ListIcon, LayoutGridIcon, ArrowUpDownIcon } from "lucide-react";
 import { toast } from "sonner";
+import { BoardView } from "@/components/kanban/board-view";
 
 type StatusFilter = "all" | "todo" | "in_progress" | "done" | "cancelled";
 type ViewMode = "list" | "kanban";
@@ -60,69 +61,6 @@ function formatTime(iso: string | null) {
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
 
-// Kanban board inline component
-function KanbanBoard({ issues }: { issues: Issue[] }) {
-  const router = useRouter();
-  const columns: { status: StatusFilter; label: string; color: string }[] = [
-    { status: "todo", label: "待办", color: "border-t-gray-400" },
-    { status: "in_progress", label: "进行中", color: "border-t-blue-500" },
-    { status: "done", label: "已完成", color: "border-t-green-500" },
-    { status: "cancelled", label: "已取消", color: "border-t-red-400" },
-  ];
-
-  return (
-    <div className="grid grid-cols-4 gap-4">
-      {columns.map((col) => {
-        const colIssues = issues.filter((i) => i.status === col.status);
-        return (
-          <div key={col.status} className="space-y-3">
-            <div className={`flex items-center gap-2 border-t-2 ${col.color} pt-2`}>
-              <h3 className="text-sm font-medium">{col.label}</h3>
-              <span className="text-xs text-muted-foreground bg-muted rounded-full px-1.5 py-0.5">
-                {colIssues.length}
-              </span>
-            </div>
-            <div className="space-y-2">
-              {colIssues.map((issue) => {
-                const pCfg = priorityConfig[issue.priority];
-                return (
-                  <Card
-                    key={issue.id}
-                    className="cursor-pointer hover:shadow-md transition-shadow"
-                    onClick={() => router.push(`/issues/${issue.id}`)}
-                  >
-                    <CardContent className="p-3 space-y-2">
-                      <p className="text-sm font-medium line-clamp-2">{issue.title}</p>
-                      <div className="flex items-center justify-between">
-                        <span className={`text-xs ${pCfg?.color}`}>{pCfg?.label}</span>
-                        <span className="text-[10px] text-muted-foreground font-mono">
-                          {issue.issue_id}
-                        </span>
-                      </div>
-                      {issue.labels && issue.labels.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {issue.labels.map((l) => (
-                            <span
-                              key={l.id}
-                              className="text-[10px] px-1.5 py-0.5 rounded bg-muted"
-                              style={l.color ? { borderLeft: `3px solid ${l.color}` } : undefined}
-                            >
-                              {l.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 export default function IssuesPage() {
   const router = useRouter();
@@ -171,6 +109,60 @@ export default function IssuesPage() {
       toast.success("Issue 创建成功");
     },
     onError: (err: Error) => toast.error(`创建失败: ${err.message}`),
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }: { id: string; status: string }) =>
+      updateIssue(id, { status }),
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ["issues"] });
+      const queryKey = ["issues", statusFilter, labelFilter];
+      const previous = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData<{ issues: Issue[]; total: number }>(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          issues: old.issues.map((i) => (i.id === id ? { ...i, status: status as Issue["status"] } : i)),
+        };
+      });
+      return { previous, queryKey };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previous);
+      }
+      toast.error("状态更新失败");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+    },
+  });
+
+  const priorityMutation = useMutation({
+    mutationFn: ({ id, priority }: { id: string; priority: string }) =>
+      updateIssue(id, { priority }),
+    onMutate: async ({ id, priority }) => {
+      await queryClient.cancelQueries({ queryKey: ["issues"] });
+      const queryKey = ["issues", statusFilter, labelFilter];
+      const previous = queryClient.getQueryData(queryKey);
+      queryClient.setQueryData<{ issues: Issue[]; total: number }>(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          issues: old.issues.map((i) => (i.id === id ? { ...i, priority: priority as Issue["priority"] } : i)),
+        };
+      });
+      return { previous, queryKey };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous && context?.queryKey) {
+        queryClient.setQueryData(context.queryKey, context.previous);
+      }
+      toast.error("优先级更新失败");
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+    },
   });
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -271,7 +263,11 @@ export default function IssuesPage() {
           </div>
         </Card>
       ) : viewMode === "kanban" ? (
-        <KanbanBoard issues={issues} />
+        <BoardView
+          issues={issues}
+          onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
+          onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
+        />
       ) : (
         <Card>
           <CardContent className="p-0">

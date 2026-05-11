@@ -77,7 +77,7 @@ class MachineConfig:
 @dataclass
 class CloudConfig:
     api_url: str = "http://localhost:8000/api/v1"
-    api_key: str = "CHANGE_ME"
+    api_key: str = ""  # Empty = will auto-register on first startup
     poll_interval: int = 60
 
 
@@ -196,12 +196,13 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
     # Validate required fields
     for field_name, value in [
         ("machine.machine_id", cfg.machine.machine_id),
-        ("cloud.api_key", cfg.cloud.api_key),
         ("cloud.api_url", cfg.cloud.api_url),
     ]:
         if value == "CHANGE_ME":
             print(f"ERROR: Please set '{field_name}' in config.yaml (currently 'CHANGE_ME')")
             sys.exit(1)
+
+    # api_key is optional — if empty, the bridge will auto-register on startup
 
     # Agent paths are resolved per-agent-type at bridge startup (not here, since
     # there is no single agent_type — the bridge registers one machine per agent CLI).
@@ -214,3 +215,17 @@ def load_config(config_path: str = "config.yaml") -> BridgeConfig:
         cfg.machine.project_root = cwd
 
     return cfg
+
+
+def save_api_key(config_path: str, api_key: str) -> None:
+    """Persist the auto-generated API key to config.yaml."""
+    path = Path(config_path)
+    with open(path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+
+    if "cloud" not in raw:
+        raw["cloud"] = {}
+    raw["cloud"]["api_key"] = api_key
+
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(raw, f, default_flow_style=False, allow_unicode=True)

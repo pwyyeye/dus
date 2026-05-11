@@ -8,7 +8,7 @@ from pathlib import Path
 
 from loguru import logger
 
-from bridge.config import load_config, BridgeConfig, detect_available_agents
+from bridge.config import load_config, BridgeConfig, detect_available_agents, save_api_key
 from bridge.api_client import ApiClient
 from bridge.executor import get_executor, AgentExecutor
 from bridge.logger import setup_logger
@@ -24,14 +24,15 @@ CONSECUTIVE_401_THRESHOLD = 3
 class Bridge:
     """Main bridge process: poll cloud, dispatch tasks to local agents.
 
-    Each detected agent CLI is registered as an independent machine (device),
-    so device granularity is at the agent CLI level — same as Multica's runtime model.
+    One device = one Machine record. All detected agent CLIs are reported
+    in available_agents; tasks are dispatched to the first available executor.
     """
 
-    def __init__(self, config: BridgeConfig, available_agents: list[dict]):
+    def __init__(self, config: BridgeConfig, available_agents: list[dict], machine_id: str):
         self.config = config
         self.api = ApiClient(config)
         self._available_agents = available_agents
+        self._machine_id = machine_id
 
         # One executor per detected agent CLI
         self._executors: dict[str, AgentExecutor] = {}
@@ -79,7 +80,7 @@ class Bridge:
         }
 
     async def start(self):
-        """Main entry: start health server, register machines, then poll loop."""
+        """Main entry: start health server, register device, then poll loop."""
         agent_types = [a["agent_type"] for a in self._available_agents]
         logger.info(f"Bridge starting — machine_id={self.config.machine.machine_id}, "
                      f"agents={agent_types}, capability={self.config.machine.agent_capability}")
@@ -90,35 +91,26 @@ class Bridge:
             logger.error("Health server failed to start. Another bridge may be running.")
             return
 
-        # Register one machine per agent CLI
+        # Register this device as a single machine with all agents
         await self._register_with_retry()
-        registered = [at for at in self._executors if self.api.is_registered(at)]
-        if not registered:
-            logger.error("No agents registered successfully, exiting")
+        if not self.api.is_registered:
+            logger.error("Machine registration failed, exiting")
             return
-        logger.info(f"Registered {len(registered)}/{len(self._executors)} agents: {registered}")
+        logger.info(f"Device registered with {len(self._executors)} agents: {agent_types}")
 
         # Start GC loop
         self.gc.start()
 
         logger.info(f"Polling every {self.config.cloud.poll_interval}s ...")
         while self._running:
-            for agent_type in list(self._executors.keys()):
-                if not self.api.is_registered(agent_type):
-                    continue
-                try:
-                    tasks = await self.api.poll_tasks(agent_type)
-                    for task in tasks:
-                        task["_agent_type"] = agent_type
-                        t = asyncio.create_task(self._handle_task_safe(task))
-                        self._tasks.append(t)
-                        t.add_done_callback(lambda _t: self._tasks.remove(_t) if _t in self._tasks else None)
-                except Exception as e:
-                    logger.error(f"Poll error for {agent_type}: {e}")
-
-                # Update agent status per agent CLI
-                agent_status = "busy" if self._agent_running_tasks.get(agent_type, 0) > 0 else "idle"
-                await self.api.update_agent_status(agent_type, agent_status)
+            try:
+                tasks = await self.api.poll_tasks()
+                for task in tasks:
+                    t = asyncio.create_task(self._handle_task_safe(task))
+                    self._tasks.append(t)
+                    t.add_done_callback(lambda _t: self._tasks.remove(_t) if _t in self._tasks else None)
+            except Exception as e:
+                logger.error(f"Poll error: {e}")
 
             # Check if we need to re-register (consecutive 401s)
             if self._consecutive_401s >= CONSECUTIVE_401_THRESHOLD:
@@ -128,22 +120,17 @@ class Bridge:
             await asyncio.sleep(self.config.cloud.poll_interval)
 
     async def _register_all(self) -> bool:
-        """Register all unregistered agent CLIs. Returns True if at least one succeeds."""
-        any_ok = False
-        for agent in self._available_agents:
-            agent_type = agent["agent_type"]
-            if self.api.is_registered(agent_type):
-                any_ok = True
-                continue
-            ok = await self.api.register_machine(
-                agent_type=agent_type,
-                agent_version=self._agent_versions.get(agent_type),
-            )
-            if ok:
-                any_ok = True
-            else:
-                logger.warning(f"Failed to register {agent_type}")
-        return any_ok
+        """Register this device as a single machine with all detected agents."""
+        if self.api.is_registered:
+            return True
+        first_agent = self._available_agents[0]
+        return await self.api.register_machine(
+            machine_id=self._machine_id,
+            machine_name=self.config.machine.machine_name,
+            agent_type=first_agent["agent_type"],
+            agent_version=self._agent_versions.get(first_agent["agent_type"]),
+            available_agents=self._available_agents,
+        )
 
     async def _register_with_retry(self):
         """Register all agents with exponential backoff retry."""
@@ -159,7 +146,7 @@ class Bridge:
 
     async def _handle_task_safe(self, task: dict):
         """Handle task with concurrency limit and error safety."""
-        agent_type = task.get("_agent_type", "unknown")
+        agent_type = self._available_agents[0]["agent_type"]
         async with self.semaphore:
             self._running_tasks += 1
             self._agent_running_tasks[agent_type] = self._agent_running_tasks.get(agent_type, 0) + 1
@@ -184,7 +171,8 @@ class Bridge:
         instruction = task.get("instruction", "")
         prior_session_id = task.get("prior_session_id")
         prior_work_dir = task.get("prior_work_dir")
-        agent_type = task.get("_agent_type", "unknown")
+        # Use first available executor (single device = single machine model)
+        agent_type = self._available_agents[0]["agent_type"]
         executor = self._executors.get(agent_type)
         if not executor:
             logger.error(f"Task {task_name}: no executor for agent_type={agent_type}")
@@ -371,6 +359,34 @@ async def async_main():
         print("Install at least one: claude, codex, hermes, openclaw, kimi-cli")
         sys.exit(1)
 
+    # Auto-register: if no API key configured, call the public /register endpoint
+    # to get one from the server. Use device fingerprint as machine_id.
+    if not config.cloud.api_key:
+        print("No API key configured — auto-registering with server...")
+        tmp_client = ApiClient(config)
+        first_agent = available_agents[0]
+        api_key = await tmp_client.register_and_get_key(
+            machine_id=machine_uuid,
+            machine_name=config.machine.machine_name,
+            agent_type=first_agent["agent_type"],
+            agent_capability=config.machine.agent_capability,
+            agent_version=first_agent.get("version"),
+            project_id=config.machine.project_id,
+            project_root=config.machine.project_root,
+            available_agents=available_agents,
+        )
+        await tmp_client.close()
+
+        if not api_key:
+            print("ERROR: Auto-registration failed. Set cloud.api_key manually or check server.")
+            sys.exit(1)
+
+        # Save key to config.yaml and update in-memory config
+        config_path = os.getenv("DUS_CONFIG_PATH", "config.yaml")
+        save_api_key(config_path, api_key)
+        config.cloud.api_key = api_key
+        print(f"API key saved to {config_path}")
+
     # Print config summary on startup
     print("=" * 50)
     print("Bridge Configuration Summary")
@@ -393,7 +409,7 @@ async def async_main():
         print(f"  {a['agent_type']}: {a['path']} (v{a['version']})")
     print("=" * 50)
 
-    bridge = Bridge(config, available_agents)
+    bridge = Bridge(config, available_agents, machine_id=machine_uuid)
 
     # Signal handlers: not available on Windows, use keyboard-only Ctrl+C
     if sys.platform != "win32":

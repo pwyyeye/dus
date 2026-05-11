@@ -4,12 +4,16 @@ from pathlib import Path
 import time
 import logging
 
-from fastapi import FastAPI, Request, HTTPException, Security
+from fastapi import FastAPI, Request, HTTPException, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.security import APIKeyHeader
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
+from database import get_db
+from models import Machine, ApiBan
 from routers import machines, tasks, projects, templates, issues, ws, agents, comments, labels, autopilots, skills, inbox, analytics
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -76,14 +80,52 @@ app.add_middleware(
 
 
 # API Key authentication dependency
-# Development mode: accepts any non-empty key with minimum length
-async def verify_api_key(api_key: str = Security(api_key_header)):
+# Looks up per-machine keys in the Machine table; falls back to global key
+# for backward compatibility during the transition period.
+async def verify_api_key(
+    request: Request,
+    api_key: str = Security(api_key_header),
+    db: AsyncSession = Depends(get_db),
+):
     if not api_key:
         raise HTTPException(status_code=401, detail="Missing API Key")
+
+    client_ip = request.client.host if request.client else None
+
+    # Check IP ban
+    if client_ip:
+        stmt = select(ApiBan).where(
+            ApiBan.target_type == "ip",
+            ApiBan.target_value == client_ip,
+            ApiBan.is_active == True,
+        )
+        result = await db.execute(stmt)
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=403, detail="IP address is banned")
+
+    # Check key ban
+    stmt = select(ApiBan).where(
+        ApiBan.target_type == "key",
+        ApiBan.target_value == api_key,
+        ApiBan.is_active == True,
+    )
+    result = await db.execute(stmt)
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=403, detail="API key is banned")
+
+    # Look up per-machine key
+    stmt = select(Machine).where(Machine.api_key == api_key)
+    result = await db.execute(stmt)
+    machine = result.scalar_one_or_none()
+    if machine:
+        return api_key
+
+    # Backward compatibility: accept the global API key during transition
     settings = get_settings()
-    if api_key != settings.API_KEY:
-        raise HTTPException(status_code=401, detail="Invalid API Key")
-    return api_key
+    if api_key == settings.API_KEY:
+        return api_key
+
+    raise HTTPException(status_code=401, detail="Invalid API Key")
 
 
 # Health check (no auth required)
@@ -94,6 +136,8 @@ async def health_check():
 
 # Register routers with API key dependency
 app.include_router(machines.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
+# Public router: no auth (registration endpoint)
+app.include_router(machines.public_router, prefix="/api/v1")
 app.include_router(tasks.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
 app.include_router(projects.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
 app.include_router(templates.router, prefix="/api/v1", dependencies=[Security(verify_api_key)])
