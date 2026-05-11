@@ -21,6 +21,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 
 function formatTime(iso: string | null) {
@@ -47,12 +54,15 @@ interface DeviceCardProps {
 export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0, className }: DeviceCardProps) {
   const [dispatchOpen, setDispatchOpen] = useState(false);
   const [instruction, setInstruction] = useState("");
+  const [selectedAgentCli, setSelectedAgentCli] = useState<string>("");
   const queryClient = useQueryClient();
 
   const isOnline = machine.status === "online";
   const isEnabled = machine.is_enabled;
   const isBusy = machine.agent_status === "busy";
   const isIdle = machine.agent_status === "idle";
+
+  const availableAgents = machine.available_agents ?? [];
 
   const updateMutation = useMutation({
     mutationFn: (data: { is_enabled?: boolean }) => updateMachine(machine.id, data),
@@ -63,23 +73,33 @@ export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0
   });
 
   const dispatchMutation = useMutation({
-    mutationFn: (data: { instruction: string }) =>
+    mutationFn: (data: { instruction: string; agent_cli_id?: string }) =>
       createTask({
         instruction: data.instruction,
         target_machine_id: machine.id,
+        agent_cli_id: data.agent_cli_id || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       queryClient.invalidateQueries({ queryKey: ["machines-dashboard"] });
       setDispatchOpen(false);
       setInstruction("");
+      setSelectedAgentCli("");
     },
   });
 
   const onDispatch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!instruction.trim()) return;
-    dispatchMutation.mutate({ instruction });
+    dispatchMutation.mutate({ instruction, agent_cli_id: selectedAgentCli || undefined });
+  };
+
+  const onDispatchOpen = (open: boolean) => {
+    setDispatchOpen(open);
+    if (!open) {
+      setInstruction("");
+      setSelectedAgentCli("");
+    }
   };
 
   return (
@@ -107,6 +127,16 @@ export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0
             <span className="text-xs text-muted-foreground font-mono">{machine.agent_version}</span>
           )}
         </div>
+        {machine.available_agents && machine.available_agents.length > 0 && (
+          <div className="flex flex-wrap gap-1 pt-1">
+            {machine.available_agents.map((a) => (
+              <Badge key={a.agent_type} variant="secondary" className="text-xs">
+                {a.agent_type}
+                <span className="ml-1 text-muted-foreground">v{a.version}</span>
+              </Badge>
+            ))}
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {runningTasks.length > 0 ? (
@@ -144,13 +174,36 @@ export function DeviceCard({ machine, runningTasks = [], completedTasksCount = 0
           >
             {isEnabled ? "禁用" : "启用"}
           </Button>
-          <Dialog open={dispatchOpen} onOpenChange={setDispatchOpen}>
-            <DialogTrigger render={<Button size="sm" className="flex-1" disabled={!isEnabled || !isOnline}>下发任务</Button>} />
+          <Dialog open={dispatchOpen} onOpenChange={onDispatchOpen}>
+            <DialogTrigger>
+              <Button size="sm" className="flex-1" disabled={!isEnabled || !isOnline}>下发任务</Button>
+            </DialogTrigger>
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>向 {machine.machine_name} 下发任务</DialogTitle>
               </DialogHeader>
               <form onSubmit={onDispatch} className="space-y-4">
+                {availableAgents.length > 1 && (
+                  <div className="space-y-2">
+                    <Label htmlFor={`dispatch-agent-${machine.id}`}>选择 Agent CLI</Label>
+                    <Select value={selectedAgentCli} onValueChange={(v) => setSelectedAgentCli(v || "")}>
+                      <SelectTrigger id={`dispatch-agent-${machine.id}`}>
+                        <SelectValue>
+                          {selectedAgentCli
+                            ? (() => { const a = availableAgents.find(x => (x.cli_id || x.agent_type) === selectedAgentCli); return a ? `${a.agent_type} v${a.version}` : selectedAgentCli; })()
+                            : "默认（第一个可用）"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableAgents.map((a) => (
+                          <SelectItem key={a.cli_id || a.agent_type} value={a.cli_id || a.agent_type}>
+                            {a.agent_type} <span className="text-muted-foreground text-xs ml-1">v{a.version}</span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor={`dispatch-instruction-${machine.id}`}>执行指令</Label>
                   <Textarea

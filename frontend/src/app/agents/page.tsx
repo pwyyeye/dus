@@ -134,7 +134,7 @@ export default function AgentsPage() {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <SkeletonTable rows={5} cols={7} />
+            <SkeletonTable rows={5} cols={8} />
           ) : !agents?.length ? (
             <div className="py-8 text-center text-muted-foreground">暂无智能体，点击右上角创建</div>
           ) : (
@@ -143,6 +143,7 @@ export default function AgentsPage() {
                 <TableRow>
                   <TableHead>名称</TableHead>
                   <TableHead>绑定设备</TableHead>
+                  <TableHead>绑定 CLI</TableHead>
                   <TableHead>模型</TableHead>
                   <TableHead>技能</TableHead>
                   <TableHead>并发上限</TableHead>
@@ -163,6 +164,13 @@ export default function AgentsPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {a.machine?.machine_name ?? a.machine_id.slice(0, 8)}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {a.bound_cli_type ? (
+                        <Badge variant="outline">{a.bound_cli_type}</Badge>
+                      ) : (
+                        <span className="text-muted-foreground">默认</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs font-mono text-muted-foreground">
                       {a.model || "默认"}
@@ -264,7 +272,7 @@ function AgentFormDialog({
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  machines: { id: string; machine_id: string; machine_name: string; agent_type: string }[];
+  machines: { id: string; machine_id: string; machine_name: string; agent_type: string; available_agents?: Array<{ cli_id: string; agent_type: string; path: string; version: string }> }[];
   skills: Skill[];
   isPending: boolean;
   onSave: (data: Record<string, unknown>) => void;
@@ -277,12 +285,23 @@ function AgentFormDialog({
     instructions?: string | null;
     model?: string | null;
     max_concurrent_tasks?: number;
+    bound_cli_id?: string | null;
+    bound_cli_type?: string | null;
     skills?: Skill[];
   } | null;
 }) {
   const [selectedSkills, setSelectedSkills] = useState<string[]>(
     initial?.skills?.map((s) => s.id) ?? []
   );
+  const [selectedMachineId, setSelectedMachineId] = useState<string | null>(
+    initial?.machine_id ?? null
+  );
+  const [selectedCliId, setSelectedCliId] = useState<string | null>(
+    initial?.bound_cli_id ?? null
+  );
+
+  const selectedMachine = machines.find((m) => m.id === (selectedMachineId || initial?.machine_id));
+  const availableClis = selectedMachine?.available_agents ?? [];
 
   const toggleSkill = (skillId: string) => {
     setSelectedSkills((prev) =>
@@ -309,11 +328,13 @@ function AgentFormDialog({
     const instructions = fd.get("instructions") as string;
     const model = fd.get("model") as string;
     const maxConcurrent = fd.get("max_concurrent_tasks") as string;
+    const bound_cli_id = selectedCliId || undefined;
 
     if (description) data.description = description;
     if (instructions) data.instructions = instructions;
     if (model) data.model = model;
     if (maxConcurrent) data.max_concurrent_tasks = parseInt(maxConcurrent, 10);
+    if (bound_cli_id) data.bound_cli_id = bound_cli_id;
 
     onSave(data);
   };
@@ -335,19 +356,51 @@ function AgentFormDialog({
           </div>
           <div className="space-y-2">
             <Label htmlFor="agent-machine">绑定设备 *</Label>
-            <Select name="machine_id" defaultValue={initial?.machine_id}>
+            <Select
+              name="machine_id"
+              defaultValue={initial?.machine_id}
+              onValueChange={(val) => {
+                setSelectedMachineId(val);
+                setSelectedCliId(null);
+              }}
+            >
               <SelectTrigger id="agent-machine">
                 <SelectValue placeholder="选择设备..." />
               </SelectTrigger>
               <SelectContent>
                 {machines.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
-                    {m.machine_name} ({m.agent_type})
+                    {m.machine_name} ({m.available_agents?.map(a => a.agent_type).join(", ") ?? m.agent_type})
                   </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
+          {availableClis.length > 1 && (
+            <div className="space-y-2">
+              <Label htmlFor="agent-cli">绑定 CLI</Label>
+              <Select
+                name="bound_cli_id"
+                value={selectedCliId ?? ""}
+                onValueChange={setSelectedCliId}
+              >
+                <SelectTrigger id="agent-cli">
+                  <SelectValue placeholder="使用默认 CLI（第一个）..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">使用默认 CLI（第一个）</SelectItem>
+                  {availableClis.map((cli) => (
+                    <SelectItem key={cli.cli_id} value={cli.cli_id}>
+                      {cli.agent_type} (v{cli.version})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                指定此智能体使用哪个 CLI 执行任务
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="agent-instructions">系统指令</Label>
             <Textarea id="agent-instructions" name="instructions" defaultValue={initial?.instructions ?? ""} placeholder="注入到 AI 的系统提示词..." rows={3} />

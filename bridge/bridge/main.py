@@ -124,13 +124,40 @@ class Bridge:
         if self.api.is_registered:
             return True
         first_agent = self._available_agents[0]
-        return await self.api.register_machine(
+
+        # Try authenticated endpoint first
+        ok = await self.api.register_machine(
             machine_id=self._machine_id,
             machine_name=self.config.machine.machine_name,
             agent_type=first_agent["agent_type"],
             agent_version=self._agent_versions.get(first_agent["agent_type"]),
             available_agents=self._available_agents,
         )
+        if ok:
+            return True
+
+        # Fallback: public registration (no auth required, generates new key)
+        logger.warning("Authenticated register failed, trying public registration...")
+        result = await self.api.register_and_get_key(
+            machine_id=self._machine_id,
+            machine_name=self.config.machine.machine_name,
+            agent_type=first_agent["agent_type"],
+            agent_capability=self.config.machine.agent_capability,
+            agent_version=self._agent_versions.get(first_agent["agent_type"]),
+            project_id=self.config.machine.project_id,
+            project_root=self.config.machine.project_root,
+            available_agents=self._available_agents,
+        )
+        if result:
+            api_key, machine_uuid = result
+            config_path = os.getenv("DUS_CONFIG_PATH", "config.yaml")
+            save_api_key(config_path, api_key)
+            self.config.cloud.api_key = api_key
+            self.api = ApiClient(self.config)
+            self.api._machine_uuid = machine_uuid
+            logger.info(f"Re-registered via public endpoint, new API key saved")
+            return True
+        return False
 
     async def _register_with_retry(self):
         """Register all agents with exponential backoff retry."""
@@ -146,7 +173,11 @@ class Bridge:
 
     async def _handle_task_safe(self, task: dict):
         """Handle task with concurrency limit and error safety."""
-        agent_type = self._available_agents[0]["agent_type"]
+        agent_config = task.get("agent_config")
+        if agent_config and agent_config.get("agent_type"):
+            agent_type = agent_config["agent_type"]
+        else:
+            agent_type = self._available_agents[0]["agent_type"]
         async with self.semaphore:
             self._running_tasks += 1
             self._agent_running_tasks[agent_type] = self._agent_running_tasks.get(agent_type, 0) + 1
@@ -171,8 +202,15 @@ class Bridge:
         instruction = task.get("instruction", "")
         prior_session_id = task.get("prior_session_id")
         prior_work_dir = task.get("prior_work_dir")
-        # Use first available executor (single device = single machine model)
-        agent_type = self._available_agents[0]["agent_type"]
+        # Route: priority is agent_cli_id > agent_config.agent_type > first available CLI
+        agent_config = task.get("agent_config")
+        agent_cli_id = task.get("agent_cli_id")
+        if agent_cli_id and agent_cli_id in self._executors:
+            agent_type = agent_cli_id
+        elif agent_config and agent_config.get("agent_type") and agent_config["agent_type"] in self._executors:
+            agent_type = agent_config["agent_type"]
+        else:
+            agent_type = self._available_agents[0]["agent_type"]
         executor = self._executors.get(agent_type)
         if not executor:
             logger.error(f"Task {task_name}: no executor for agent_type={agent_type}")
@@ -185,9 +223,8 @@ class Bridge:
             return
 
         # Remote execution
-        agent_config = task.get("agent_config")
         if agent_config:
-            logger.info(f"Task {task_name}: executing with agent '{agent_config.get('name', 'unknown')}'")
+            logger.info(f"Task {task_name}: executing with agent '{agent_config.get('name', 'unknown')}' ({agent_type})")
         else:
             logger.info(f"Task {task_name}: executing with {agent_type}")
         if prior_session_id or prior_work_dir:
@@ -298,6 +335,9 @@ class Bridge:
             return
 
         # Include session/work_dir for resumption on next run
+        # Ensure exit_code is always an int (proc.returncode can be None)
+        if result.get("exit_code") is None:
+            result["exit_code"] = -1
         result_with_session = {
             **result,
             "work_dir": workdir,
@@ -345,6 +385,10 @@ class Bridge:
 
 
 async def async_main():
+    # Force UTF-8 stdout on Windows to avoid garbled output
+    if sys.platform == "win32":
+        import io
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     config = load_config()
     setup_logger(config.logging.level)
 
@@ -365,7 +409,7 @@ async def async_main():
         print("No API key configured — auto-registering with server...")
         tmp_client = ApiClient(config)
         first_agent = available_agents[0]
-        api_key = await tmp_client.register_and_get_key(
+        reg_result = await tmp_client.register_and_get_key(
             machine_id=machine_uuid,
             machine_name=config.machine.machine_name,
             agent_type=first_agent["agent_type"],
@@ -377,9 +421,10 @@ async def async_main():
         )
         await tmp_client.close()
 
-        if not api_key:
+        if not reg_result:
             print("ERROR: Auto-registration failed. Set cloud.api_key manually or check server.")
             sys.exit(1)
+        api_key, registered_machine_uuid = reg_result
 
         # Save key to config.yaml and update in-memory config
         config_path = os.getenv("DUS_CONFIG_PATH", "config.yaml")

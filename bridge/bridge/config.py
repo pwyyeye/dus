@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -123,7 +124,7 @@ def detect_available_agents() -> list[dict]:
     1. Environment variable (e.g. DUS_CLAUDE_PATH)
     2. shutil.which() on PATH using default binary name
 
-    Returns a list of dicts: [{"agent_type": ..., "path": ..., "version": ...}]
+    Returns a list of dicts: [{"cli_id": ..., "agent_type": ..., "path": ..., "version": ...}]
     """
     agents = []
     for agent_type, bin_name in _DEFAULT_AGENT_BINS.items():
@@ -152,6 +153,7 @@ def detect_available_agents() -> list[dict]:
         except Exception:
             pass
         agents.append({
+            "cli_id": str(uuid.uuid5(uuid.NAMESPACE_DNS, resolved)),
             "agent_type": agent_type,
             "path": resolved,
             "version": version,

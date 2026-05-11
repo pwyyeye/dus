@@ -34,6 +34,7 @@ export interface Machine {
   last_poll_at: string | null;
   registered_at: string;
   pending_task_count?: number;
+  available_agents?: Array<{ cli_id: string; agent_type: string; path: string; version: string }>;
 }
 
 export interface MachineDashboard {
@@ -228,6 +229,7 @@ export async function createTask(data: {
   instruction: string;
   project_id?: string;
   target_machine_id?: string;
+  agent_cli_id?: string;
   max_retries?: number;
 }): Promise<Task> {
   const res = await request<ApiResponse<Task>>("/tasks", {
@@ -518,6 +520,8 @@ export interface Agent {
   custom_env: Record<string, string> | null;
   custom_args: string[] | null;
   mcp_config: Record<string, unknown> | null;
+  bound_cli_id: string | null;
+  bound_cli_type: string | null;
   max_concurrent_tasks: number;
   is_enabled: boolean;
   created_at: string;
@@ -552,6 +556,7 @@ export async function createAgent(data: {
   custom_env?: Record<string, string>;
   custom_args?: string[];
   mcp_config?: Record<string, unknown>;
+  bound_cli_id?: string;
   max_concurrent_tasks?: number;
   skill_ids?: string[];
 }): Promise<Agent> {
@@ -571,6 +576,7 @@ export async function updateAgent(id: string, data: {
   custom_env?: Record<string, string>;
   custom_args?: string[];
   mcp_config?: Record<string, unknown>;
+  bound_cli_id?: string;
   max_concurrent_tasks?: number;
   is_enabled?: boolean;
   skill_ids?: string[];

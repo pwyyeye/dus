@@ -33,6 +33,7 @@ router = APIRouter(prefix="/machines", tags=["machines"])
 public_router = APIRouter(prefix="/machines", tags=["machines"])
 
 
+
 @router.post("", response_model=ApiResponse)
 async def register_machine(payload: MachineCreate, db: AsyncSession = Depends(get_db)):
     """Register a new machine or update existing one. Auto-creates project if not exists."""
@@ -466,6 +467,7 @@ async def poll_tasks(
                 status="dispatched",
                 project_id=task.project_id,
                 agent_capability=machine.agent_capability,
+                agent_cli_id=task.agent_cli_id,
                 issue_id=task.issue_id,
                 prior_session_id=prior_session,
                 prior_work_dir=prior_workdir,
@@ -486,6 +488,7 @@ async def poll_tasks(
                 status="dispatched",
                 project_id=task.project_id,
                 agent_capability=machine.agent_capability,
+                agent_cli_id=task.agent_cli_id,
                 issue_id=task.issue_id,
                 prior_session_id=prior_session,
                 prior_work_dir=prior_workdir,

@@ -91,7 +91,7 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
     if target_machine_id and issue.status not in ("done", "cancelled"):
         task = Task(
             task_id=f"task-{uuid.uuid4().hex[:8]}",
-            instruction=issue.title + (f"\n\n{issue.description}" if issue.description else ""),
+            instruction=issue.description or issue.title,
             project_id=issue.project_id,
             target_machine_id=target_machine_id,
             issue_id=issue.id,
@@ -285,7 +285,7 @@ async def update_issue(
         if target_machine_id:
             new_task = Task(
                 task_id=f"task-{uuid.uuid4().hex[:8]}",
-                instruction=issue.title + (f"\n\n{issue.description}" if issue.description else ""),
+                instruction=issue.description or issue.title,
                 project_id=issue.project_id,
                 target_machine_id=target_machine_id,
                 issue_id=issue.id,

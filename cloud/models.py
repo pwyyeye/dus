@@ -69,6 +69,7 @@ class Machine(Base):
 
     tasks: Mapped[list["Task"]] = relationship(back_populates="target_machine")
     project: Mapped["Project | None"] = relationship()
+    agents: Mapped[list["Agent"]] = relationship(back_populates="machine")
 
     __table_args__ = (
         Index("idx_machines_status", "status"),
@@ -166,6 +167,8 @@ class Task(Base):
     issue_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(), ForeignKey("issues.id"), nullable=True
     )
+    # Agent CLI to use for this task (from machine's available_agents)
+    agent_cli_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -236,6 +239,8 @@ class Agent(Base):
     custom_env: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     custom_args: Mapped[list | None] = mapped_column(JSON, nullable=True)
     mcp_config: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    bound_cli_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    bound_cli_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
     max_concurrent_tasks: Mapped[int] = mapped_column(Integer, default=3)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(default=utcnow)

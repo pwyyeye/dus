@@ -31,6 +31,8 @@ def _agent_to_response(agent: Agent) -> AgentResponse:
         custom_env=agent.custom_env,
         custom_args=agent.custom_args,
         mcp_config=agent.mcp_config,
+        bound_cli_id=agent.bound_cli_id,
+        bound_cli_type=agent.bound_cli_type,
         max_concurrent_tasks=agent.max_concurrent_tasks,
         is_enabled=agent.is_enabled,
         created_at=agent.created_at,
@@ -49,6 +51,19 @@ async def create_agent(payload: AgentCreate, db: AsyncSession = Depends(get_db))
     if not machine:
         raise HTTPException(status_code=400, detail="Machine not found")
 
+    bound_cli_type = None
+    if payload.bound_cli_id:
+        cli = next(
+            (c for c in machine.available_agents if c.get("cli_id") == payload.bound_cli_id),
+            None,
+        )
+        if not cli:
+            raise HTTPException(
+                status_code=400,
+                detail=f"CLI with id {payload.bound_cli_id} not found on this machine",
+            )
+        bound_cli_type = cli.get("agent_type")
+
     agent = Agent(
         name=payload.name,
         description=payload.description,
@@ -58,6 +73,8 @@ async def create_agent(payload: AgentCreate, db: AsyncSession = Depends(get_db))
         custom_env=payload.custom_env,
         custom_args=payload.custom_args,
         mcp_config=payload.mcp_config,
+        bound_cli_id=payload.bound_cli_id,
+        bound_cli_type=bound_cli_type,
         max_concurrent_tasks=payload.max_concurrent_tasks,
     )
     db.add(agent)
@@ -110,6 +127,8 @@ async def list_agents(
                 description=a.description,
                 machine_id=a.machine_id,
                 model=a.model,
+                bound_cli_id=a.bound_cli_id,
+                bound_cli_type=a.bound_cli_type,
                 max_concurrent_tasks=a.max_concurrent_tasks,
                 is_enabled=a.is_enabled,
                 created_at=a.created_at,
@@ -165,6 +184,27 @@ async def update_agent(
         val = getattr(payload, field, None)
         if val is not None:
             setattr(agent, field, val)
+
+    # Handle bound_cli_id update with validation
+    if payload.bound_cli_id is not None:
+        machine_stmt = select(Machine).where(Machine.id == agent.machine_id)
+        machine_result = await db.execute(machine_stmt)
+        machine = machine_result.scalar_one_or_none()
+        if machine:
+            cli = next(
+                (c for c in machine.available_agents if c.get("cli_id") == payload.bound_cli_id),
+                None,
+            )
+            if not cli:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"CLI with id {payload.bound_cli_id} not found on this machine",
+                )
+            agent.bound_cli_id = payload.bound_cli_id
+            agent.bound_cli_type = cli.get("agent_type")
+        else:
+            agent.bound_cli_id = None
+            agent.bound_cli_type = None
 
     # Update skills
     if payload.skill_ids is not None:

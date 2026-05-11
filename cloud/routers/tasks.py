@@ -53,6 +53,7 @@ async def create_task(payload: TaskCreate, db: AsyncSession = Depends(get_db)):
         target_machine_id=payload.target_machine_id,
         project_id=payload.project_id,
         issue_id=payload.issue_id,
+        agent_cli_id=payload.agent_cli_id,
         max_retries=payload.max_retries,
     )
     db.add(task)
@@ -238,6 +239,25 @@ async def submit_result(
             message=f"Exit code: {payload.exit_code}",
         )
         db.add(log)
+
+    # Sync issue status when task finishes
+    if task.issue_id and task.status in ("completed", "failed"):
+        issue_stmt = select(Issue).where(Issue.id == task.issue_id)
+        issue_result = await db.execute(issue_stmt)
+        issue = issue_result.scalar_one_or_none()
+        if issue:
+            if task.status == "completed":
+                issue.status = "done"
+            elif task.status == "failed":
+                issue.status = "todo"
+            issue.updated_at = now
+            try:
+                await ws_manager.broadcast(
+                    "issue.updated",
+                    {"id": str(issue.id), "status": issue.status, "issue_id": issue.issue_id},
+                )
+            except Exception:
+                pass
 
     try:
         await ws_manager.broadcast(

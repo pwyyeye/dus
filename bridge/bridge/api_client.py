@@ -52,11 +52,11 @@ class ApiClient:
         project_id: str | None = None,
         project_root: str | None = None,
         available_agents: list[dict] | None = None,
-    ) -> str | None:
+    ) -> tuple[str, str] | None:
         """Register a new machine via the public /register endpoint and get an API key.
 
         This call does NOT use the existing client (which may have an invalid key).
-        Returns the generated API key on success, None on failure.
+        Returns (api_key, machine_uuid) on success, None on failure.
         """
         url = f"{self.base_url}/machines/register"
         payload = {
@@ -76,12 +76,14 @@ class ApiClient:
 
         for attempt in range(1, MAX_RETRIES + 1):
             try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=30.0)) as client:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(connect=5.0, read=30.0, write=10.0, pool=5.0)) as client:
                     resp = await client.post(url, json=payload)
                     resp.raise_for_status()
                     data = resp.json()
                     if data.get("success") and data.get("data", {}).get("api_key"):
-                        return data["data"]["api_key"]
+                        api_key = data["data"]["api_key"]
+                        machine_uuid = data["data"]["id"]
+                        return (api_key, machine_uuid)
                     logger.error(f"Register response missing api_key: {data}")
                     return None
             except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:

@@ -177,6 +177,7 @@ class TaskCreate(BaseModel):
     project_id: uuid.UUID | None = None
     target_machine_id: uuid.UUID | None = None
     issue_id: uuid.UUID | None = None
+    agent_cli_id: str | None = Field(default=None, description="Agent CLI类型，如 claude_code, codex, openclaw, kimi")
     max_retries: int = Field(default=0, ge=0, le=10)
 
 
@@ -207,6 +208,7 @@ class TaskResponse(BaseModel):
     project_id: uuid.UUID | None
     target_machine_id: uuid.UUID | None
     issue_id: uuid.UUID | None
+    agent_cli_id: str | None = None
     template_id: uuid.UUID | None
     created_at: datetime
     started_at: datetime | None
@@ -230,6 +232,7 @@ class TaskListResponse(BaseModel):
     project_id: uuid.UUID | None
     target_machine_id: uuid.UUID | None
     issue_id: uuid.UUID | None
+    agent_cli_id: str | None = None
     created_at: datetime
     error_message: str | None = None
     retry_count: int = 0
@@ -241,6 +244,7 @@ class TaskListResponse(BaseModel):
 class AgentConfig(BaseModel):
     """Agent configuration passed to the bridge during task dispatch."""
     agent_id: str
+    agent_type: str | None = None
     name: str
     instructions: str | None = None
     model: str | None = None
@@ -256,6 +260,7 @@ class PollTaskResponse(BaseModel):
     status: TaskStatus
     project_id: uuid.UUID | None = None
     agent_capability: str = ""
+    agent_cli_id: str | None = None
     issue_id: uuid.UUID | None = None
     prior_session_id: str | None = None
     prior_work_dir: str | None = None
@@ -602,6 +607,7 @@ class AgentCreate(BaseModel):
     custom_env: dict | None = None
     custom_args: list[str] | None = None
     mcp_config: dict | None = None
+    bound_cli_id: str | None = None
     max_concurrent_tasks: int = Field(default=3, ge=1, le=20)
     skill_ids: list[uuid.UUID] = Field(default_factory=list)
 
@@ -615,6 +621,7 @@ class AgentUpdate(BaseModel):
     custom_env: dict | None = None
     custom_args: list[str] | None = None
     mcp_config: dict | None = None
+    bound_cli_id: str | None = None
     max_concurrent_tasks: int | None = Field(default=None, ge=1, le=20)
     is_enabled: bool | None = None
     skill_ids: list[uuid.UUID] | None = None
@@ -630,6 +637,8 @@ class AgentResponse(BaseModel):
     custom_env: dict | None
     custom_args: list[str] | None
     mcp_config: dict | None
+    bound_cli_id: str | None
+    bound_cli_type: str | None
     max_concurrent_tasks: int
     is_enabled: bool
     created_at: datetime
@@ -646,6 +655,8 @@ class AgentListResponse(BaseModel):
     description: str | None
     machine_id: uuid.UUID
     model: str | None
+    bound_cli_id: str | None
+    bound_cli_type: str | None
     max_concurrent_tasks: int
     is_enabled: bool
     created_at: datetime

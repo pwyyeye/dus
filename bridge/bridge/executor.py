@@ -194,11 +194,12 @@ class ClaudeCodeExecutor(AgentExecutor):
             stdout = "".join(stdout_lines)
             stderr = "".join(stderr_lines)
 
+            rc = self._proc.returncode
             return {
-                "exit_code": self._proc.returncode,
+                "exit_code": rc if rc is not None else 0,
                 "stdout": stdout,
                 "stderr": stderr,
-                "error_type": None if self._proc.returncode == 0 else "execution_error",
+                "error_type": None if rc in (0, None) else "execution_error",
             }
         except FileNotFoundError:
             logger.error(f"Agent executable not found: {self.agent_path}")
@@ -281,11 +282,12 @@ class GenericAgentExecutor(AgentExecutor):
             stdout = "".join(stdout_lines)
             stderr = "".join(stderr_lines)
 
+            rc = self._proc.returncode
             return {
-                "exit_code": self._proc.returncode,
+                "exit_code": rc if rc is not None else 0,
                 "stdout": stdout,
                 "stderr": stderr,
-                "error_type": None if self._proc.returncode == 0 else "execution_error",
+                "error_type": None if rc in (0, None) else "execution_error",
             }
         except FileNotFoundError:
             logger.error(f"Agent executable not found: {self.agent_path}")
@@ -363,11 +365,12 @@ class CodexExecutor(AgentExecutor):
             stdout = "".join(stdout_lines)
             stderr = "".join(stderr_lines)
 
+            rc = self._proc.returncode
             return {
-                "exit_code": self._proc.returncode,
+                "exit_code": rc if rc is not None else 0,
                 "stdout": stdout,
                 "stderr": stderr,
-                "error_type": None if self._proc.returncode == 0 else "execution_error",
+                "error_type": None if rc in (0, None) else "execution_error",
             }
         except FileNotFoundError:
             logger.error(f"Agent executable not found: {self.agent_path}")
