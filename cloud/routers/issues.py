@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select, func
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -511,9 +511,11 @@ async def list_issue_messages(
     db: AsyncSession = Depends(get_db),
 ):
     """Get all chat messages for an issue's conversation history."""
-    stmt = select(Issue).options(joinedload(Issue.chat_sessions)).where(Issue.id == issue_uuid)
+    stmt = select(Issue).options(
+        joinedload(Issue.chat_sessions).selectinload(ChatSession.messages)
+    ).where(Issue.id == issue_uuid)
     result = await db.execute(stmt)
-    issue = result.scalar_one_or_none()
+    issue = result.unique().scalar_one_or_none()
     if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
 

@@ -123,6 +123,15 @@ export interface Comment {
   replies: Comment[];
 }
 
+export interface ChatMessage {
+  id: string;
+  chat_session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  task_id: string | null;
+  created_at: string;
+}
+
 export interface Issue {
   id: string;
   issue_id: string;
@@ -426,6 +435,24 @@ export async function updateComment(id: string, data: { content: string }): Prom
 
 export async function deleteComment(id: string): Promise<void> {
   await request<ApiResponse<void>>(`/comments/${id}`, { method: "DELETE" });
+}
+
+// ── ChatMessage API ──
+
+export async function fetchIssueMessages(issueId: string): Promise<ChatMessage[]> {
+  const res = await request<ApiResponse<ChatMessage[]>>(`/issues/${issueId}/messages`);
+  return res.data;
+}
+
+export async function appendChatMessage(taskId: string, data: {
+  role: "user" | "assistant";
+  content: string;
+}): Promise<ChatMessage> {
+  const res = await request<ApiResponse<ChatMessage>>(`/tasks/${taskId}/messages`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+  return res.data;
 }
 
 // ── Label API ──

@@ -11,9 +11,11 @@ import {
   deleteComment,
   addIssueDependency,
   removeIssueDependency,
+  fetchIssueMessages,
   type Issue,
   type Label,
   type Comment,
+  type ChatMessage,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +47,7 @@ import {
   XIcon,
   SubscriptIcon,
   GitBranchIcon,
+  BotIcon,
 } from "lucide-react";
 
 interface PageProps {
@@ -159,6 +162,12 @@ export default function IssueDetailPage({ params }: PageProps) {
   const { data: labels } = useQuery({
     queryKey: ["labels"],
     queryFn: fetchLabels,
+  });
+
+  const { data: chatMessages } = useQuery({
+    queryKey: ["issue-messages", id],
+    queryFn: () => fetchIssueMessages(id),
+    enabled: !!id,
   });
 
   const createCommentMut = useMutation({
@@ -487,6 +496,42 @@ export default function IssueDetailPage({ params }: PageProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* AI Conversation */}
+      {chatMessages && chatMessages.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <BotIcon className="size-4" />
+              AI 会话
+            </CardTitle>
+            <CardDescription>与智能体的对话历史</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  className={`flex gap-2 ${msg.role === "user" ? "flex-row" : "flex-row-reverse"}`}
+                >
+                  <div
+                    className={`px-3 py-2 rounded-lg text-sm max-w-[80%] ${
+                      msg.role === "user"
+                        ? "bg-blue-100 text-blue-900"
+                        : "bg-gray-100 text-gray-900"
+                    }`}
+                  >
+                    <div className="text-xs opacity-60 mb-1">
+                      {msg.role === "user" ? "用户" : "助手"}
+                    </div>
+                    <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Comments */}
       <Card>

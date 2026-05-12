@@ -9,18 +9,30 @@ import sys
 LOG_DIR = Path(__file__).parent / "log"
 LOG_DIR.mkdir(exist_ok=True)
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    force=True,
-    handlers=[
-        logging.FileHandler(LOG_DIR / "server.log", encoding="utf-8"),
-        logging.StreamHandler(sys.stdout),
-    ],
-)
+# 移除所有现有 handlers（包括 uvicorn 可能在 basicConfig 前设置的）
+root_logger = logging.getLogger()
+root_logger.handlers.clear()
+
+file_handler = logging.FileHandler(LOG_DIR / "server.log", encoding="utf-8")
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setLevel(logging.DEBUG)
+stream_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+
+root_logger.addHandler(file_handler)
+root_logger.addHandler(stream_handler)
+root_logger.setLevel(logging.DEBUG)
 
 for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"]:
-    logging.getLogger(logger_name).setLevel(logging.DEBUG)
+    l = logging.getLogger(logger_name)
+    l.handlers.clear()
+    l.addHandler(file_handler)
+    l.addHandler(stream_handler)
+    l.setLevel(logging.DEBUG)
+
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
 from fastapi import FastAPI, Request, HTTPException, Security, Depends
@@ -70,6 +82,12 @@ app = FastAPI(
 )
 
 logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception: %s", exc)
+    raise exc
 
 
 @app.middleware("http")
