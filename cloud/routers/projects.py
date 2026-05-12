@@ -82,6 +82,34 @@ async def list_projects(
     return ApiResponse(data=data, message="ok", meta={"total": total, "limit": limit, "offset": offset})
 
 
+@router.get("/{project_uuid}", response_model=ApiResponse)
+async def get_project(
+    project_uuid: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
+    """Get project by ID with idle hours calculation."""
+    stmt = select(Project).where(Project.id == project_uuid)
+    result = await db.execute(stmt)
+    project = result.scalar_one_or_none()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    resp = ProjectResponse.model_validate(project)
+    now = datetime.now(timezone.utc)
+    if project.last_activity_at:
+        last_act = project.last_activity_at.replace(tzinfo=timezone.utc) if project.last_activity_at.tzinfo is None else project.last_activity_at
+        delta = now - last_act
+        resp.idle_hours = round(delta.total_seconds() / 3600, 1)
+        resp.is_exceeding_threshold = resp.idle_hours > project.idle_threshold_hours
+    else:
+        resp.idle_hours = None
+        resp.is_exceeding_threshold = None
+
+    return ApiResponse(
+        data=resp.model_dump(mode="json"),
+        message="ok",
+    )
+
+
 @router.put("/{project_uuid}", response_model=ApiResponse)
 async def update_project(
     project_uuid: uuid.UUID, payload: ProjectUpdate, db: AsyncSession = Depends(get_db)

@@ -16,8 +16,8 @@ import { BoardCardOverlay } from "./board-card";
 import type { Issue } from "@/lib/api";
 
 const COLUMNS = [
-  { status: "backlog", label: "待办", color: "border-t-gray-300" },
-  { status: "todo", label: "计划中", color: "border-t-gray-400" },
+  { status: "backlog", label: "待规划", color: "border-t-gray-300" },
+  { status: "todo", label: "待办", color: "border-t-gray-400" },
   { status: "in_progress", label: "进行中", color: "border-t-blue-500" },
   { status: "done", label: "已完成", color: "border-t-green-500" },
   { status: "blocked", label: "被阻塞", color: "border-t-orange-500" },
@@ -38,9 +38,10 @@ interface BoardViewProps {
   issues: Issue[];
   onStatusChange: (issueId: string, newStatus: string) => void;
   onPriorityChange: (issueId: string, priority: string) => void;
+  onEdit?: (issue: Issue) => void;
 }
 
-export function BoardView({ issues, onStatusChange, onPriorityChange }: BoardViewProps) {
+export function BoardView({ issues, onStatusChange, onPriorityChange, onEdit }: BoardViewProps) {
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
 
   // Local column state for optimistic drag feedback
@@ -164,6 +165,7 @@ export function BoardView({ issues, onStatusChange, onPriorityChange }: BoardVie
               color={col.color}
               issues={colIssues}
               onPriorityChange={onPriorityChange}
+              onEdit={onEdit}
             />
           );
         })}

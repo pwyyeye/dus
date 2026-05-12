@@ -12,6 +12,7 @@ import {
   addIssueDependency,
   removeIssueDependency,
   fetchIssueMessages,
+  createIssue,
   type Issue,
   type Label,
   type Comment,
@@ -38,6 +39,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowLeftIcon,
   EyeIcon,
   LinkIcon,
@@ -48,6 +55,7 @@ import {
   SubscriptIcon,
   GitBranchIcon,
   BotIcon,
+  PlusIcon,
 } from "lucide-react";
 
 interface PageProps {
@@ -147,6 +155,8 @@ export default function IssueDetailPage({ params }: PageProps) {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [authorName, setAuthorName] = useState("");
   const [newDepId, setNewDepId] = useState("");
+  const [subIssueOpen, setSubIssueOpen] = useState(false);
+  const [subIssueDescription, setSubIssueDescription] = useState("");
 
   const { data: issue, isLoading: issueLoading } = useQuery({
     queryKey: ["issue", id],
@@ -199,6 +209,25 @@ export default function IssueDetailPage({ params }: PageProps) {
     mutationFn: (depId: string) => removeIssueDependency(id, depId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["issue", id] });
+    },
+  });
+
+  const createSubIssueMut = useMutation({
+    mutationFn: (data: { description: string }) =>
+      createIssue({
+        title: issue!.title,
+        description: data.description,
+        parent_issue_id: id,
+        project_id: issue!.project_id ?? undefined,
+        assignee_type: issue!.assignee_type ?? undefined,
+        assignee_id: issue!.assignee_id ?? undefined,
+        agent_cli_id: issue!.agent_cli_id ?? undefined,
+        priority: issue!.priority,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issue", id] });
+      setSubIssueOpen(false);
+      setSubIssueDescription("");
     },
   });
 
@@ -346,11 +375,19 @@ export default function IssueDetailPage({ params }: PageProps) {
       {/* Sub-issues */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <SubscriptIcon className="size-4" />
-            子任务
-          </CardTitle>
-          <CardDescription>属于当前 Issue 的子工作项</CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <SubscriptIcon className="size-4" />
+                子任务
+              </CardTitle>
+              <CardDescription>属于当前 Issue 的子工作项</CardDescription>
+            </div>
+            <Button size="sm" onClick={() => setSubIssueOpen(true)}>
+              <PlusIcon className="size-4 mr-1" />
+              添加子任务
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {subIssues.length === 0 ? (
@@ -676,6 +713,74 @@ export default function IssueDetailPage({ params }: PageProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Add Sub-Issue Dialog */}
+      <Dialog open={subIssueOpen} onOpenChange={setSubIssueOpen}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>添加子任务</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/50 p-3 space-y-2 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">标题：</span>
+                <span className="font-medium">{issue.title}</span>
+              </div>
+              {issue.project_id && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">项目ID：</span>
+                  <span className="font-mono text-xs">{issue.project_id}</span>
+                </div>
+              )}
+              {issue.assignee_type && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">分配：</span>
+                  <span>
+                    {issue.assignee_type === "machine" ? "设备" : "智能体"}
+                    {issue.assignee_id && ` (${issue.assignee_id.slice(0, 8)}...)`}
+                  </span>
+                </div>
+              )}
+              {issue.agent_cli_id && (
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Agent CLI：</span>
+                  <span className="font-mono text-xs">{issue.agent_cli_id}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">优先级：</span>
+                <span>{priorityConfig[issue.priority]?.label ?? issue.priority}</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">子任务描述</label>
+              <Textarea
+                value={subIssueDescription}
+                onChange={(e) => setSubIssueDescription(e.target.value)}
+                placeholder="描述这个子任务需要完成的具体工作..."
+                rows={4}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setSubIssueOpen(false);
+                  setSubIssueDescription("");
+                }}
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => createSubIssueMut.mutate({ description: subIssueDescription })}
+                disabled={!subIssueDescription.trim() || createSubIssueMut.isPending}
+              >
+                {createSubIssueMut.isPending ? "创建中..." : "创建子任务"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

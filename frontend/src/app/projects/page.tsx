@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
 import { SkeletonCards } from "@/components/ui/skeleton";
@@ -71,7 +72,8 @@ function ProjectCard({ project, onEdit }: ProjectCardProps) {
   const statusConfig = idleStatusConfig[idleStatus];
 
   return (
-    <Card>
+    <Link href={`/projects/${project.id}`} className="block">
+    <Card className="hover:border-primary/50 transition-colors cursor-pointer">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
           <div className="space-y-1">
@@ -87,7 +89,7 @@ function ProjectCard({ project, onEdit }: ProjectCardProps) {
             >
               {statusConfig.label}
             </Badge>
-            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => onEdit(project)}>
+            <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onEdit(project); }}>
               <PencilIcon className="h-3.5 w-3.5" />
             </Button>
           </div>
@@ -124,6 +126,7 @@ function ProjectCard({ project, onEdit }: ProjectCardProps) {
         </div>
       </CardContent>
     </Card>
+    </Link>
   );
 }
 

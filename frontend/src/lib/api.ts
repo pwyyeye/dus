@@ -291,6 +291,11 @@ export async function fetchProjects(): Promise<Project[]> {
   return res.data;
 }
 
+export async function fetchProject(id: string): Promise<Project> {
+  const res = await request<ApiResponse<Project>>(`/projects/${id}`);
+  return res.data;
+}
+
 export async function createProject(data: {
   project_name: string;
   root_path?: string;
@@ -373,6 +378,7 @@ export async function updateIssue(id: string, data: {
   project_id?: string;
   parent_issue_id?: string | null;
   label_ids?: string[];
+  agent_cli_id?: string;
 }): Promise<Issue> {
   const res = await request<ApiResponse<Issue>>(`/issues/${id}`, {
     method: "PUT",

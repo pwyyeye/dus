@@ -332,6 +332,7 @@ class IssueListResponse(BaseModel):
     parent_issue_id: uuid.UUID | None
     agent_cli_id: str | None = None
     created_at: datetime
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
 

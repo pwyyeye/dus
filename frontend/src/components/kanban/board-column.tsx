@@ -12,9 +12,10 @@ interface BoardColumnProps {
   color: string;
   issues: Issue[];
   onPriorityChange: (issueId: string, priority: string) => void;
+  onEdit?: (issue: Issue) => void;
 }
 
-export function BoardColumn({ status, label, color, issues, onPriorityChange }: BoardColumnProps) {
+export function BoardColumn({ status, label, color, issues, onPriorityChange, onEdit }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
@@ -37,6 +38,7 @@ export function BoardColumn({ status, label, color, issues, onPriorityChange }: 
               key={issue.id}
               issue={issue}
               onPriorityChange={onPriorityChange}
+              onEdit={onEdit}
             />
           ))}
         </SortableContext>

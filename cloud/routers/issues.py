@@ -160,7 +160,7 @@ async def list_issues(
     db: AsyncSession = Depends(get_db),
 ):
     """List issues with optional filters and pagination."""
-    stmt = select(Issue)
+    stmt = select(Issue).where(Issue.parent_issue_id == None)
     if status:
         stmt = stmt.where(Issue.status == status.value)
     if project_id:
@@ -193,7 +193,7 @@ async def get_issue(issue_uuid: uuid.UUID, db: AsyncSession = Depends(get_db)):
             joinedload(Issue.tasks),
             joinedload(Issue.sub_issues),
             joinedload(Issue.labels),
-            joinedload(Issue.comments),
+            selectinload(Issue.comments).selectinload(Comment.replies),
             joinedload(Issue.outgoing_deps),
             joinedload(Issue.incoming_deps),
         )
