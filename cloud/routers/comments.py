@@ -1,22 +1,91 @@
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload, selectinload
 
 from database import get_db
-from models import Comment, Issue
+from models import Comment, Issue, Task, Agent, Machine, ChatSession
 from schemas import CommentCreate, CommentUpdate, CommentResponse, ApiResponse
+from util.mention import parse_mentions, has_mention_all
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/comments", tags=["comments"])
+
+
+async def _create_task_for_issue(
+    issue: Issue,
+    instruction: str,
+    db: AsyncSession,
+    mentioned_agent_id: uuid.UUID | None = None,
+) -> Task | None:
+    """Create a Task for an issue, reusing existing active ChatSession if available."""
+    target_machine_id = None
+
+    if mentioned_agent_id:
+        # Explicit @mention: resolve mentioned agent to machine
+        stmt = select(Agent).where(Agent.id == mentioned_agent_id)
+        result = await db.execute(stmt)
+        agent = result.scalar_one_or_none()
+        if not agent or not agent.is_enabled:
+            logger.warning(f"Mentioned agent {mentioned_agent_id} not found or disabled, skipping task")
+            return None
+        target_machine_id = agent.machine_id
+    elif issue.assignee_type == "machine" and issue.assignee_id:
+        target_machine_id = issue.assignee_id
+    elif issue.assignee_type == "agent" and issue.assignee_id:
+        stmt = select(Agent).where(Agent.id == issue.assignee_id)
+        result = await db.execute(stmt)
+        agent = result.scalar_one_or_none()
+        if not agent or not agent.is_enabled:
+            return None
+        target_machine_id = agent.machine_id
+    else:
+        # No assignee, skip
+        return None
+
+    # Reuse existing active ChatSession or create a new one
+    existing_session = next(
+        (s for s in issue.chat_sessions if s.status == "active"), None
+    )
+    chat_session = existing_session if existing_session else ChatSession(issue_id=issue.id, status="active")
+    if not existing_session:
+        db.add(chat_session)
+        await db.flush()
+
+    task = Task(
+        task_id=f"task-{uuid.uuid4().hex[:8]}",
+        instruction=instruction,
+        project_id=issue.project_id,
+        target_machine_id=target_machine_id,
+        issue_id=issue.id,
+        agent_cli_id=issue.agent_cli_id,
+        chat_session_id=chat_session.id,
+        status="pending",
+    )
+    db.add(task)
+    await db.flush()
+    return task
 
 
 @router.post("", response_model=ApiResponse)
 async def create_comment(payload: CommentCreate, db: AsyncSession = Depends(get_db)):
-    """Create a comment on an issue. Supports nested replies."""
-    issue_stmt = select(Issue).where(Issue.id == payload.issue_id)
+    """Create a comment on an issue.
+
+    Auto-triggers a Task when:
+    - The issue has an active assignee (machine or agent), OR
+    - The comment content contains an @mention of a specific agent
+    """
+    # Load issue with chat_sessions for task creation
+    issue_stmt = select(Issue).options(
+        joinedload(Issue.chat_sessions),
+        joinedload(Issue.tasks),
+    ).where(Issue.id == payload.issue_id)
     issue_result = await db.execute(issue_stmt)
-    if not issue_result.scalar_one_or_none():
+    issue = issue_result.unique().scalar_one_or_none()
+    if not issue:
         raise HTTPException(status_code=404, detail="Issue not found")
 
     if payload.parent_id:
@@ -37,8 +106,44 @@ async def create_comment(payload: CommentCreate, db: AsyncSession = Depends(get_
     db.add(comment)
     await db.flush()
 
+    # ── Auto-task trigger ──
+    if issue.status not in ("done", "cancelled"):
+        mentioned_agents = parse_mentions(payload.content)
+        mention_all = has_mention_all(payload.content)
+
+        # on_mention: explicitly mentioned agents
+        for _, agent_id in mentioned_agents:
+            await _create_task_for_issue(issue, payload.content, db, mentioned_agent_id=agent_id)
+            logger.info(f"Task created for mentioned agent {agent_id} on issue {issue.issue_id}")
+
+        # on_comment: issue has assignee, no @all, not a reply, no explicit mentions
+        # → trigger assignee
+        if (
+            not mention_all
+            and not mentioned_agents
+            and not payload.parent_id
+            and issue.assignee_id
+            and issue.status == "in_progress"
+        ):
+            # Only create if no pending/dispatched task already exists
+            has_pending = any(
+                t.status in ("pending", "dispatched") for t in issue.tasks
+            )
+            if not has_pending:
+                task = await _create_task_for_issue(issue, payload.content, db)
+                if task:
+                    logger.info(f"Task {task.task_id} auto-created for comment on issue {issue.issue_id}")
+
     return ApiResponse(
-        data=CommentResponse.model_validate(comment).model_dump(mode="json"),
+        data=CommentResponse(
+            id=comment.id,
+            issue_id=comment.issue_id,
+            parent_id=comment.parent_id,
+            content=comment.content,
+            author_name=comment.author_name,
+            created_at=comment.created_at,
+            replies=[],
+        ).model_dump(mode="json"),
         message="Comment created",
     )
 

@@ -4,10 +4,38 @@ from pathlib import Path
 import time
 import logging
 import sys
+import io
 
 # 配置日志：输出到 log 文件夹，级别 DEBUG
 LOG_DIR = Path(__file__).parent / "log"
 LOG_DIR.mkdir(exist_ok=True)
+
+
+class TeeStream:
+    """同时写stdout和log文件的stream，捕获uvicorn直接写fd=1/2的输出"""
+    def __init__(self, original_stream, log_file):
+        self.original = original_stream
+        self.log_file = log_file
+
+    def write(self, data):
+        self.original.write(data)
+        self.log_file.write(data)
+        self.log_file.flush()
+
+    def flush(self):
+        self.original.flush()
+        self.log_file.flush()
+
+    def fileno(self):
+        return self.original.fileno()
+
+    def isatty(self):
+        return self.original.isatty()
+
+
+log_file = open(LOG_DIR / "server.log", "a", encoding="utf-8")
+sys.stdout = TeeStream(sys.__stdout__, log_file)
+sys.stderr = TeeStream(sys.__stderr__, log_file)
 
 # 移除所有现有 handlers（包括 uvicorn 可能在 basicConfig 前设置的）
 root_logger = logging.getLogger()
@@ -17,22 +45,15 @@ file_handler = logging.FileHandler(LOG_DIR / "server.log", encoding="utf-8")
 file_handler.setLevel(logging.DEBUG)
 file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
 
-stream_handler = logging.StreamHandler(sys.stdout)
-stream_handler.setLevel(logging.DEBUG)
-stream_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-
 root_logger.addHandler(file_handler)
-root_logger.addHandler(stream_handler)
 root_logger.setLevel(logging.DEBUG)
 
 for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"]:
     l = logging.getLogger(logger_name)
     l.handlers.clear()
     l.addHandler(file_handler)
-    l.addHandler(stream_handler)
     l.setLevel(logging.DEBUG)
 
-logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
 from fastapi import FastAPI, Request, HTTPException, Security, Depends
