@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select, func, or_, and_
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -386,10 +387,15 @@ async def poll_tasks(
     machine.status = "online"
 
     # Pre-assigned pending tasks for this machine
-    assigned_stmt = select(Task).where(
-        Task.target_machine_id == machine.id,
-        Task.status == "pending",
-    ).order_by(Task.created_at.asc())
+    assigned_stmt = (
+        select(Task)
+        .options(joinedload(Task.project))
+        .where(
+            Task.target_machine_id == machine.id,
+            Task.status == "pending",
+        )
+        .order_by(Task.created_at.asc())
+    )
     assigned_result = await db.execute(assigned_stmt)
     assigned_tasks = list(assigned_result.scalars().all())
 
@@ -398,6 +404,7 @@ async def poll_tasks(
     # 条件2: Issue 处于 in_progress 且无 assignee（可被任意 agent 认领）
     unassigned_stmt = (
         select(Task)
+        .options(joinedload(Task.project))
         .join(Issue, Task.issue_id == Issue.id, isouter=True)
         .where(
             Task.target_machine_id.is_(None),
@@ -492,6 +499,7 @@ async def poll_tasks(
                     instruction=task.instruction,
                     status="dispatched",
                     project_id=task.project_id,
+                    project_root_path=task.project.root_path if task.project else None,
                     agent_capability=machine.agent_capability,
                     agent_cli_id=task.agent_cli_id,
                     issue_id=task.issue_id,
@@ -513,6 +521,7 @@ async def poll_tasks(
                 instruction=task.instruction,
                 status="dispatched",
                 project_id=task.project_id,
+                project_root_path=task.project.root_path if task.project else None,
                 agent_capability=machine.agent_capability,
                 agent_cli_id=task.agent_cli_id,
                 issue_id=task.issue_id,

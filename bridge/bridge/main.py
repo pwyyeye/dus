@@ -202,6 +202,7 @@ class Bridge:
         instruction = task.get("instruction", "")
         prior_session_id = task.get("prior_session_id")
         prior_work_dir = task.get("prior_work_dir")
+        project_root_path = task.get("project_root_path")
         # Route: priority is agent_cli_id > agent_config.agent_type > first available CLI
         agent_config = task.get("agent_config")
         agent_cli_id = task.get("agent_cli_id")
@@ -229,11 +230,16 @@ class Bridge:
             logger.info(f"Task {task_name}: executing with {agent_type}")
         if prior_session_id or prior_work_dir:
             logger.info(f"Task {task_name}: resuming session_id={prior_session_id}, work_dir={prior_work_dir}")
+        elif project_root_path:
+            logger.info(f"Task {task_name}: using project_root_path={project_root_path}")
         await self.api.update_task_status(task_id, "running")
 
-        # Prepare workdir (prefer prior work_dir for session resumption)
+        # Prepare workdir (prefer prior work_dir for session resumption, then project root)
         if prior_work_dir:
             workdir = prior_work_dir
+            Path(workdir).mkdir(parents=True, exist_ok=True)
+        elif project_root_path:
+            workdir = project_root_path
             Path(workdir).mkdir(parents=True, exist_ok=True)
         else:
             workdir = self.config.agent.workdir_template.format(task_id=task_name)

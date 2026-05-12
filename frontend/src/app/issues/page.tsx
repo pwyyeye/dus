@@ -58,6 +58,19 @@ const priorityConfig: Record<string, { label: string; color: string }> = {
   urgent: { label: "紧急", color: "text-red-600" },
 };
 
+const PRIORITY_OPTIONS = [
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+  { value: "urgent", label: "紧急" },
+];
+
+const ASSIGNEE_TYPE_OPTIONS = [
+  { value: "", label: "不分配" },
+  { value: "machine", label: "分配给设备" },
+  { value: "agent", label: "分配给智能体" },
+];
+
 function formatTime(iso: string | null) {
   if (!iso) return "-";
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
@@ -84,7 +97,11 @@ export default function IssuesPage() {
   const [editSelectedProjectName, setEditSelectedProjectName] = useState("");
   const [editSelectedAssigneeType, setEditSelectedAssigneeType] = useState("");
   const [editSelectedAssigneeId, setEditSelectedAssigneeId] = useState("");
+  const [editSelectedAgentCli, setEditSelectedAgentCli] = useState("");
+  const [editSelectedPriority, setEditSelectedPriority] = useState("medium");
   const [pendingEditIssue, setPendingEditIssue] = useState<Issue | null>(null);
+  const [selectedPriority, setSelectedPriority] = useState("medium");
+  const [selectedAgentCli, setSelectedAgentCli] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["issues", statusFilter, labelFilter],
@@ -207,6 +224,8 @@ export default function IssuesPage() {
       setEditDescription(fullIssue.description ?? "");
       setEditSelectedAssigneeType(fullIssue.assignee_type ?? "");
       setEditSelectedAssigneeId(fullIssue.assignee_id ?? "");
+      setEditSelectedAgentCli(fullIssue.agent_cli_id ?? "");
+      setEditSelectedPriority(fullIssue.priority ?? "medium");
       const proj = (projects ?? []).find((p: Project) => p.id === fullIssue.project_id);
       setEditSelectedProjectName(proj?.project_name ?? "");
     } catch (err) {
@@ -230,6 +249,7 @@ export default function IssuesPage() {
       setEditDescription(editingIssue.description ?? "");
       setEditSelectedAssigneeType(editingIssue.assignee_type ?? "");
       setEditSelectedAssigneeId(editingIssue.assignee_id ?? "");
+      setEditSelectedPriority(editingIssue.priority ?? "medium");
       const proj = (projects ?? []).find((p: Project) => p.id === editingIssue.project_id);
       setEditSelectedProjectName(proj?.project_name ?? "");
     }
@@ -258,6 +278,8 @@ export default function IssuesPage() {
     setSelectedProjectName("");
     setSelectedAssigneeType("");
     setSelectedAssigneeId("");
+    setSelectedPriority("medium");
+    setSelectedAgentCli("");
   };
 
   return (
@@ -452,35 +474,36 @@ export default function IssuesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="issue-priority">优先级</Label>
-              <Select name="priority" defaultValue="medium">
-                <SelectTrigger id="issue-priority"><SelectValue /></SelectTrigger>
+              <Select name="priority" value={selectedPriority} onValueChange={(v) => setSelectedPriority(v ?? "medium")}>
+                <SelectTrigger id="issue-priority">
+                  <SelectValue>{PRIORITY_OPTIONS.find(o => o.value === selectedPriority)?.label}</SelectValue>
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">低</SelectItem>
-                  <SelectItem value="medium">中</SelectItem>
-                  <SelectItem value="high">高</SelectItem>
-                  <SelectItem value="urgent">紧急</SelectItem>
+                  {PRIORITY_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="issue-assignee-type">分配方式</Label>
-              <Select value={selectedAssigneeType} onValueChange={(v) => { setSelectedAssigneeType(v || ""); setSelectedAssigneeId(""); }}>
+              <Select name="assignee_type" value={selectedAssigneeType} onValueChange={(v) => { setSelectedAssigneeType(v || ""); setSelectedAssigneeId(""); }}>
                 <SelectTrigger id="issue-assignee-type">
-                  <SelectValue placeholder="不分配（放入任务池）" />
+                  <SelectValue>{ASSIGNEE_TYPE_OPTIONS.find(o => o.value === selectedAssigneeType)?.label || "不分配（放入任务池）"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">不分配</SelectItem>
-                  <SelectItem value="machine">分配给设备</SelectItem>
-                  <SelectItem value="agent">分配给智能体</SelectItem>
+                  {ASSIGNEE_TYPE_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             {selectedAssigneeType === "machine" && (
               <div className="space-y-2">
                 <Label htmlFor="issue-assignee">目标设备</Label>
-                <Select value={selectedAssigneeId} onValueChange={(v) => setSelectedAssigneeId(v || "")}>
+                <Select name="assignee_id" value={selectedAssigneeId} onValueChange={(v) => setSelectedAssigneeId(v || "")}>
                   <SelectTrigger id="issue-assignee">
-                    <SelectValue placeholder="选择设备..." />
+                    <SelectValue>{(machines ?? []).find(m => m.id === selectedAssigneeId)?.machine_name || "选择设备..."}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(machines ?? []).map((m: Machine) => (
@@ -495,9 +518,9 @@ export default function IssuesPage() {
             {selectedAssigneeType === "agent" && (
               <div className="space-y-2">
                 <Label htmlFor="issue-assignee">目标智能体</Label>
-                <Select value={selectedAssigneeId} onValueChange={(v) => setSelectedAssigneeId(v || "")}>
+                <Select name="assignee_id" value={selectedAssigneeId} onValueChange={(v) => setSelectedAssigneeId(v || "")}>
                   <SelectTrigger id="issue-assignee">
-                    <SelectValue placeholder="选择智能体..." />
+                    <SelectValue>{(agents ?? []).find(a => a.id === selectedAssigneeId)?.name || "选择智能体..."}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(agents ?? []).map((a: Agent) => (
@@ -511,12 +534,13 @@ export default function IssuesPage() {
               const selectedMachine = (machines ?? []).find(m => m.id === selectedAssigneeId);
               const availableAgents = selectedMachine?.available_agents;
               if (selectedAssigneeType !== "machine" || !selectedAssigneeId || !availableAgents || availableAgents.length <= 1) return null;
+              const selectedAgent = availableAgents.find((a: { cli_id?: string; agent_type: string; version: string }) => (a.cli_id || a.agent_type) === selectedAgentCli);
               return (
                 <div className="space-y-2">
                   <Label htmlFor="issue-agent-cli">Agent CLI</Label>
-                  <Select name="agent_cli_id" defaultValue="">
+                  <Select name="agent_cli_id" value={selectedAgentCli} onValueChange={(v) => setSelectedAgentCli(v ?? "")}>
                     <SelectTrigger id="issue-agent-cli">
-                      <SelectValue placeholder="默认（第一个可用）" />
+                      <SelectValue>{selectedAgent ? `${selectedAgent.agent_type} v${selectedAgent.version}` : "默认（第一个可用）"}</SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {availableAgents.map((a: { cli_id?: string; agent_type: string; version: string }) => (
@@ -540,7 +564,7 @@ export default function IssuesPage() {
       </Dialog>
 
       {/* Edit dialog */}
-      <Dialog open={editOpen} onOpenChange={(open) => { if (!open) { setEditOpen(false); setEditingIssue(null); } }}>
+      <Dialog open={editOpen} onOpenChange={(open) => { if (!open) { setEditOpen(false); setEditingIssue(null); setEditSelectedAgentCli(""); } }}>
         <DialogContent className="sm:max-w-[480px]">
           <DialogHeader>
             <DialogTitle>修改 Issue</DialogTitle>
@@ -559,6 +583,7 @@ export default function IssuesPage() {
                 project_id: proj?.id ?? undefined,
                 assignee_type: editSelectedAssigneeType || undefined,
                 assignee_id: editSelectedAssigneeId || undefined,
+                agent_cli_id: formData.get("agent_cli_id") as string || undefined,
               },
             });
           }} className="space-y-4">
@@ -595,21 +620,22 @@ export default function IssuesPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-priority">优先级</Label>
-              <Select name="priority" defaultValue={editingIssue?.priority ?? "medium"}>
-                <SelectTrigger id="edit-priority"><SelectValue /></SelectTrigger>
+              <Select name="priority" value={editSelectedPriority} onValueChange={(v) => setEditSelectedPriority(v ?? "medium")}>
+                <SelectTrigger id="edit-priority">
+                  <SelectValue>{PRIORITY_OPTIONS.find(o => o.value === editSelectedPriority)?.label}</SelectValue>
+                </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="low">低</SelectItem>
-                  <SelectItem value="medium">中</SelectItem>
-                  <SelectItem value="high">高</SelectItem>
-                  <SelectItem value="urgent">紧急</SelectItem>
+                  {PRIORITY_OPTIONS.map(o => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-assignee-type">分配方式</Label>
-              <Select value={editSelectedAssigneeType} onValueChange={(v) => { setEditSelectedAssigneeType(v || ""); setEditSelectedAssigneeId(""); }}>
+              <Select name="assignee_type" value={editSelectedAssigneeType} onValueChange={(v) => { setEditSelectedAssigneeType(v || ""); setEditSelectedAssigneeId(""); }}>
                 <SelectTrigger id="edit-assignee-type">
-                  <SelectValue placeholder="不分配（放入任务池）" />
+                  <SelectValue>{ASSIGNEE_TYPE_OPTIONS.find(o => o.value === editSelectedAssigneeType)?.label || "不分配（放入任务池）"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">不分配</SelectItem>
@@ -621,9 +647,9 @@ export default function IssuesPage() {
             {editSelectedAssigneeType === "machine" && (
               <div className="space-y-2">
                 <Label htmlFor="edit-assignee">目标设备</Label>
-                <Select value={editSelectedAssigneeId} onValueChange={(v) => setEditSelectedAssigneeId(v || "")}>
+                <Select name="assignee_id" value={editSelectedAssigneeId} onValueChange={(v) => setEditSelectedAssigneeId(v || "")}>
                   <SelectTrigger id="edit-assignee">
-                    <SelectValue placeholder="选择设备..." />
+                    <SelectValue>{(machines ?? []).find(m => m.id === editSelectedAssigneeId)?.machine_name || "选择设备..."}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(machines ?? []).map((m: Machine) => (
@@ -635,12 +661,35 @@ export default function IssuesPage() {
                 </Select>
               </div>
             )}
+            {(() => {
+              const selectedMachine = (machines ?? []).find(m => m.id === editSelectedAssigneeId);
+              const availableAgents = selectedMachine?.available_agents;
+              if (editSelectedAssigneeType !== "machine" || !editSelectedAssigneeId || !availableAgents || availableAgents.length <= 1) return null;
+              const selectedAgent = availableAgents.find((a: { cli_id?: string; agent_type: string; version: string }) => (a.cli_id || a.agent_type) === editSelectedAgentCli);
+              return (
+                <div className="space-y-2">
+                  <Label htmlFor="edit-agent-cli">Agent CLI</Label>
+                  <Select name="agent_cli_id" value={editSelectedAgentCli} onValueChange={(v) => setEditSelectedAgentCli(v ?? "")}>
+                    <SelectTrigger id="edit-agent-cli">
+                      <SelectValue>{selectedAgent ? `${selectedAgent.agent_type} v${selectedAgent.version}` : "默认（第一个可用）"}</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableAgents.map((a: { cli_id?: string; agent_type: string; version: string }) => (
+                        <SelectItem key={a.cli_id || a.agent_type} value={a.cli_id || a.agent_type}>
+                          {a.agent_type} <span className="text-muted-foreground text-xs ml-1">v{a.version}</span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              );
+            })()}
             {editSelectedAssigneeType === "agent" && (
               <div className="space-y-2">
                 <Label htmlFor="edit-assignee">目标智能体</Label>
-                <Select value={editSelectedAssigneeId} onValueChange={(v) => setEditSelectedAssigneeId(v || "")}>
+                <Select name="assignee_id" value={editSelectedAssigneeId} onValueChange={(v) => setEditSelectedAssigneeId(v || "")}>
                   <SelectTrigger id="edit-assignee">
-                    <SelectValue placeholder="选择智能体..." />
+                    <SelectValue>{(agents ?? []).find(a => a.id === editSelectedAssigneeId)?.name || "选择智能体..."}</SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     {(agents ?? []).map((a: Agent) => (
@@ -651,7 +700,7 @@ export default function IssuesPage() {
               </div>
             )}
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => { setEditOpen(false); setEditingIssue(null); }}>取消</Button>
+              <Button type="button" variant="outline" onClick={() => { setEditOpen(false); setEditingIssue(null); setEditSelectedAgentCli(""); }}>取消</Button>
               <Button type="submit" disabled={editMutation.isPending}>
                 {editMutation.isPending ? "保存中..." : "保存"}
               </Button>

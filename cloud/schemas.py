@@ -262,6 +262,7 @@ class PollTaskResponse(BaseModel):
     instruction: str
     status: TaskStatus
     project_id: uuid.UUID | None = None
+    project_root_path: str | None = None
     agent_capability: str = ""
     agent_cli_id: str | None = None
     issue_id: uuid.UUID | None = None
