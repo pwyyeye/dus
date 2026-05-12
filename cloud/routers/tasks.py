@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import get_settings
 from database import get_db
-from models import Task, Machine, Issue, TaskLog
+from models import Task, Machine, Issue, TaskLog, ChatSession, ChatMessage
 from notifier import send_wechat_markdown
 from schemas import (
     TaskCreate,
@@ -20,6 +20,8 @@ from schemas import (
     TaskLogResponse,
     TaskStatus,
     ApiResponse,
+    ChatMessageCreate,
+    ChatMessageResponse,
 )
 from connection_manager import manager as ws_manager
 
@@ -538,4 +540,43 @@ async def list_task_logs(
 
     return ApiResponse(
         data=[TaskLogResponse.model_validate(l).model_dump(mode="json") for l in logs]
+    )
+
+
+# ── Chat Messages ──
+
+
+@router.post("/{task_uuid}/messages", response_model=ApiResponse)
+async def append_chat_message(
+    task_uuid: uuid.UUID,
+    payload: ChatMessageCreate,
+    db: AsyncSession = Depends(get_db),
+):
+    """Append a message to the chat session associated with a task.
+
+    Called by Bridge during agent execution to record conversation history.
+    """
+    # Get task and its chat_session
+    stmt = select(Task).where(Task.id == task_uuid)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if not task.chat_session_id:
+        raise HTTPException(status_code=400, detail="Task has no associated chat session")
+
+    # Create the message
+    chat_message = ChatMessage(
+        chat_session_id=task.chat_session_id,
+        role=payload.role,
+        content=payload.content,
+        task_id=task_uuid,
+    )
+    db.add(chat_message)
+    await db.commit()
+
+    return ApiResponse(
+        data=ChatMessageResponse.model_validate(chat_message).model_dump(mode="json"),
+        message="Message appended",
     )

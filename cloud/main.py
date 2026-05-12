@@ -12,6 +12,7 @@ LOG_DIR.mkdir(exist_ok=True)
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    force=True,
     handlers=[
         logging.FileHandler(LOG_DIR / "server.log", encoding="utf-8"),
         logging.StreamHandler(sys.stdout),

@@ -572,6 +572,45 @@ class SkillResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── ChatSession / ChatMessage Schemas ──
+
+
+class ChatMessageCreate(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str
+
+
+class ChatMessageResponse(BaseModel):
+    id: uuid.UUID
+    chat_session_id: uuid.UUID
+    role: str
+    content: str
+    task_id: uuid.UUID | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChatSessionCreate(BaseModel):
+    issue_id: uuid.UUID
+
+
+class ChatSessionResponse(BaseModel):
+    id: uuid.UUID
+    issue_id: uuid.UUID
+    session_id: str | None = None
+    work_dir: str | None = None
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ChatSessionWithMessages(ChatSessionResponse):
+    messages: list[ChatMessageResponse] = []
+
+
 # ── Template Schemas ──
 
 

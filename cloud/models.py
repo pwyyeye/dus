@@ -120,6 +120,7 @@ class Issue(Base):
 
     project: Mapped[Project | None] = relationship(back_populates="issues")
     tasks: Mapped[list["Task"]] = relationship(back_populates="issue")
+    chat_sessions: Mapped[list["ChatSession"]] = relationship(back_populates="issue")
     parent_issue: Mapped["Issue | None"] = relationship(
         "Issue", remote_side="Issue.id", back_populates="sub_issues"
     )
@@ -172,6 +173,8 @@ class Task(Base):
     )
     # Agent CLI to use for this task (from machine's available_agents)
     agent_cli_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    # ChatSession this task belongs to (for conversation history)
+    chat_session_id: Mapped[uuid.UUID | None] = mapped_column(UUID(), ForeignKey("chat_sessions.id"), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(default=utcnow)
     started_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -486,4 +489,44 @@ class ApiBan(Base):
     __table_args__ = (
         Index("idx_api_bans_type_value", "target_type", "target_value"),
         Index("idx_api_bans_active", "is_active"),
+    )
+
+
+class ChatSession(Base):
+    """AI conversation session for an Issue (inspired by Multica ChatSession)."""
+
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(), primary_key=True, default=uuid.uuid4)
+    issue_id: Mapped[uuid.UUID] = mapped_column(UUID(), ForeignKey("issues.id"), nullable=False)
+    session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)  # Claude Session ID
+    work_dir: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="active")  # "active" or "completed"
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=utcnow, onupdate=utcnow)
+
+    issue: Mapped["Issue"] = relationship(back_populates="chat_sessions")
+    messages: Mapped[list["ChatMessage"]] = relationship(order_by="ChatMessage.created_at")
+
+    __table_args__ = (Index("idx_chat_sessions_issue", "issue_id"),)
+
+
+class ChatMessage(Base):
+    """Individual message in a ChatSession (inspired by Multica ChatMessage)."""
+
+    __tablename__ = "chat_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(), primary_key=True, default=uuid.uuid4)
+    chat_session_id: Mapped[uuid.UUID] = mapped_column(UUID(), ForeignKey("chat_sessions.id"), nullable=False)
+    role: Mapped[str] = mapped_column(String(20), nullable=False)  # "user" or "assistant"
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(), ForeignKey("tasks.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=utcnow)
+
+    chat_session: Mapped["ChatSession"] = relationship(back_populates="messages")
+    task: Mapped["Task | None"] = relationship()
+
+    __table_args__ = (
+        Index("idx_chat_messages_session", "chat_session_id"),
+        Index("idx_chat_messages_task", "task_id"),
     )

@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 
 logger = logging.getLogger(__name__)
-from models import Issue, Task, Machine, Agent, Label, IssueLabel, IssueDependency, Comment
+from models import Issue, Task, Machine, Agent, Label, IssueLabel, IssueDependency, Comment, ChatSession
+from models import ChatMessage
 from schemas import (
     IssueCreate,
     IssueUpdate,
@@ -24,6 +25,8 @@ from schemas import (
     IssueDependencyResponse,
     CommentResponse,
     LabelResponse,
+    ChatMessageResponse,
+    ChatSessionWithMessages,
 )
 from connection_manager import manager as ws_manager
 
@@ -90,6 +93,11 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
 
     # Auto-dispatch: if has a valid assignee and status is active, create a Task
     if target_machine_id and issue.status not in ("done", "cancelled"):
+        # Create ChatSession for this issue's conversation history
+        chat_session = ChatSession(issue_id=issue.id, status="active")
+        db.add(chat_session)
+        await db.flush()
+
         task = Task(
             task_id=f"task-{uuid.uuid4().hex[:8]}",
             instruction=issue.description or issue.title,
@@ -97,12 +105,20 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
             target_machine_id=target_machine_id,
             issue_id=issue.id,
             agent_cli_id=issue.agent_cli_id,
+            chat_session_id=chat_session.id,
             status="pending",
         )
         db.add(task)
         await db.flush()
     # Issue is in_progress but has no assignee → create unassigned task for any agent to claim
     elif issue.status == "in_progress" and not issue.assignee_id:
+        # Reuse existing ChatSession if available, otherwise create one
+        existing_session = next((s for s in issue.chat_sessions if s.status == "active"), None)
+        chat_session = existing_session if existing_session else ChatSession(issue_id=issue.id, status="active")
+        if not existing_session:
+            db.add(chat_session)
+            await db.flush()
+
         task = Task(
             task_id=f"task-{uuid.uuid4().hex[:8]}",
             instruction=issue.description or issue.title,
@@ -110,6 +126,7 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
             target_machine_id=None,
             issue_id=issue.id,
             agent_cli_id=issue.agent_cli_id,
+            chat_session_id=chat_session.id,
             status="pending",
         )
         db.add(task)
@@ -483,3 +500,39 @@ async def remove_issue_dependency(
     await db.delete(dep)
     await db.flush()
     return ApiResponse(message="Dependency removed")
+
+
+# ── Chat History ──
+
+
+@router.get("/{issue_uuid}/messages", response_model=ApiResponse)
+async def list_issue_messages(
+    issue_uuid: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all chat messages for an issue's conversation history."""
+    stmt = select(Issue).options(joinedload(Issue.chat_sessions)).where(Issue.id == issue_uuid)
+    result = await db.execute(stmt)
+    issue = result.scalar_one_or_none()
+    if not issue:
+        raise HTTPException(status_code=404, detail="Issue not found")
+
+    if not issue.chat_sessions:
+        return ApiResponse(data=[])
+
+    # Get the most recent active session
+    active_session = None
+    for session in issue.chat_sessions:
+        if session.status == "active":
+            active_session = session
+            break
+    if not active_session:
+        # Return most recent session if no active one
+        active_session = max(issue.chat_sessions, key=lambda s: s.created_at)
+
+    messages = [
+        ChatMessageResponse.model_validate(m).model_dump(mode="json")
+        for m in active_session.messages
+    ]
+
+    return ApiResponse(data=messages)
