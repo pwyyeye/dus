@@ -110,6 +110,12 @@ npm run dev
 irm https://raw.githubusercontent.com/pwyyeye/dus/main/scripts/install.ps1 | iex
 ```
 
+**macOS 一键安装**：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pwyyeye/dus/main/scripts/install.sh | bash
+```
+
 安装后，在项目目录下运行 `dus setup` 进行配置：
 
 ```powershell
