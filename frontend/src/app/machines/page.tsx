@@ -3,7 +3,8 @@
 import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { fetchMachines, fetchAgents, createTask, Machine } from "@/lib/api";
+import { fetchMachines, fetchAgents, fetchMachinesDashboard, createTask, Machine, MachineDashboard } from "@/lib/api";
+import { DeviceCard } from "@/components/device-card";
 import {
   Card,
   CardContent,
@@ -44,7 +45,7 @@ function formatTime(iso: string | null) {
   return new Date(iso).toLocaleString("zh-CN", { hour12: false });
 }
 
-function MachineRow({ machine }: { machine: Machine }) {
+function MachineRow({ machine, dashboard }: { machine: Machine; dashboard?: MachineDashboard }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
@@ -67,6 +68,7 @@ function MachineRow({ machine }: { machine: Machine }) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      queryClient.invalidateQueries({ queryKey: ["machines-dashboard"] });
       setDispatchOpen(false);
       setInstruction("");
       setSelectedAgentCli("");
@@ -192,19 +194,14 @@ function MachineRow({ machine }: { machine: Machine }) {
       {expanded && (
         <TableRow className="bg-muted/30">
           <TableCell colSpan={9} className="p-0">
-            <div className="px-6 py-3 space-y-3">
-              {availableAgents.length > 0 && (
-                <div>
-                  <p className="text-xs font-medium text-muted-foreground mb-2">可用 Agent CLI</p>
-                  <div className="flex flex-wrap gap-2">
-                    {availableAgents.map((a) => (
-                      <Badge key={a.cli_id || a.agent_type} variant="secondary" className="text-xs">
-                        {a.agent_type} <span className="ml-1 text-muted-foreground">v{a.version}</span>
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div className="px-6 py-3">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-4">
+                <DeviceCard
+                  machine={machine}
+                  runningTasks={dashboard?.running_tasks ?? []}
+                  completedTasksCount={dashboard?.completed_tasks_count ?? 0}
+                />
+              </div>
               <div>
                 <p className="text-xs font-medium text-muted-foreground mb-2">绑定智能体</p>
                 {isFetching ? (
@@ -256,13 +253,53 @@ export default function MachinesPage() {
   const { data: machines, isLoading } = useQuery({
     queryKey: ["machines"],
     queryFn: fetchMachines,
+    refetchInterval: 10000,
   });
+
+  const { data: dashboard } = useQuery({
+    queryKey: ["machines-dashboard"],
+    queryFn: fetchMachinesDashboard,
+    refetchInterval: 10000,
+  });
+
+  const onlineCount = machines?.filter((m) => m.status === "online").length ?? 0;
+  const totalMachines = machines?.length ?? 0;
+  const idleCount = machines?.filter((m) => m.agent_status === "idle").length ?? 0;
+  const busyCount = machines?.filter((m) => m.agent_status === "busy").length ?? 0;
+  const totalRunningTasks = dashboard?.reduce((acc, m) => acc + m.running_tasks.length, 0) ?? 0;
+  const totalCompletedToday = dashboard?.reduce((acc, m) => acc + m.completed_tasks_count, 0) ?? 0;
+
+  const stats = [
+    { title: "在线设备", value: `${onlineCount} / ${totalMachines}`, desc: "当前在线 / 总注册" },
+    { title: "闲置设备", value: `${idleCount} / ${totalMachines}`, desc: "等待任务" },
+    { title: "忙碌设备", value: busyCount, desc: "正在执行任务" },
+    { title: "执行中任务", value: totalRunningTasks, desc: "已分派或运行中" },
+    { title: "今日完成", value: totalCompletedToday, desc: "任务完成数" },
+  ];
+
+  const getDashboardForMachine = (machineId: string): MachineDashboard | undefined => {
+    return dashboard?.find((d) => d.id === machineId);
+  };
 
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">设备管理</h2>
-        <p className="text-muted-foreground">查看所有注册设备及其状态（点击展开查看智能体）</p>
+        <p className="text-muted-foreground">查看所有注册设备及其状态（点击展开查看详情）</p>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        {stats.map((s) => (
+          <Card key={s.title}>
+            <CardContent className="pt-4">
+              <div className="text-xs text-muted-foreground">{s.desc}</div>
+              <div className="text-2xl font-bold mt-1">
+                {isLoading ? "..." : s.value}
+              </div>
+              <div className="text-sm font-medium mt-1">{s.title}</div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       <Card>
@@ -291,7 +328,7 @@ export default function MachinesPage() {
               </TableHeader>
               <TableBody>
                 {machines.map((m) => (
-                  <MachineRow key={m.id} machine={m} />
+                  <MachineRow key={m.id} machine={m} dashboard={getDashboardForMachine(m.id)} />
                 ))}
               </TableBody>
             </Table>

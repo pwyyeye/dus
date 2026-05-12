@@ -101,6 +101,19 @@ async def create_issue(payload: IssueCreate, db: AsyncSession = Depends(get_db))
         )
         db.add(task)
         await db.flush()
+    # Issue is in_progress but has no assignee → create unassigned task for any agent to claim
+    elif issue.status == "in_progress" and not issue.assignee_id:
+        task = Task(
+            task_id=f"task-{uuid.uuid4().hex[:8]}",
+            instruction=issue.description or issue.title,
+            project_id=issue.project_id,
+            target_machine_id=None,
+            issue_id=issue.id,
+            agent_cli_id=issue.agent_cli_id,
+            status="pending",
+        )
+        db.add(task)
+        await db.flush()
 
     try:
         await ws_manager.broadcast(
@@ -235,7 +248,23 @@ async def update_issue(
     if payload.description is not None:
         issue.description = payload.description
     if payload.status is not None:
-        issue.status = payload.status.value
+        new_status = payload.status.value
+        # 状态流转校验：如果进入 in_progress，检查是否有未完成的 blocked_by 依赖
+        if new_status == "in_progress":
+            blocked_by_incomplete = []
+            for d in issue.incoming_deps:
+                if d.dependency_type == "blocks":
+                    dep_stmt = select(Issue).where(Issue.id == d.issue_id)
+                    dep_result = await db.execute(dep_stmt)
+                    dep_issue = dep_result.scalar_one_or_none()
+                    if dep_issue and dep_issue.status not in ("done", "cancelled"):
+                        blocked_by_incomplete.append(dep_issue.issue_id)
+            if blocked_by_incomplete:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Issue is blocked by incomplete issues: {', '.join(blocked_by_incomplete)}",
+                )
+        issue.status = new_status
     if payload.priority is not None:
         issue.priority = payload.priority.value
     if payload.assignee_type is not None:
@@ -298,6 +327,24 @@ async def update_issue(
             )
             db.add(new_task)
             await db.flush()
+            logger.info(f"Created task for issue {issue.issue_id} with target_machine_id={target_machine_id}")
+        # Issue 进入 in_progress 但无 assignee → 创建待认领任务到任务池
+        elif issue.status == "in_progress" and not issue.assignee_id:
+            has_pending_task = any(t.status in ("pending", "dispatched") for t in issue.tasks)
+            logger.info(f"Issue {issue.issue_id} is in_progress with no assignee, checking for existing tasks")
+            if not has_pending_task:
+                new_task = Task(
+                    task_id=f"task-{uuid.uuid4().hex[:8]}",
+                    instruction=issue.description or issue.title,
+                    project_id=issue.project_id,
+                    target_machine_id=None,  # 无机器分配，等待任意 agent 认领
+                    issue_id=issue.id,
+                    agent_cli_id=issue.agent_cli_id,
+                    status="pending",
+                )
+                db.add(new_task)
+                await db.flush()
+                logger.info(f"Created unassigned task {new_task.task_id} for in_progress issue {issue.issue_id}")
 
     if status_changed and issue.status == "cancelled":
         for task in issue.tasks:

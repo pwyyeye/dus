@@ -18,7 +18,7 @@ export function BoardColumn({ status, label, color, issues, onPriorityChange }: 
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
-    <div className="space-y-3">
+    <div className="flex-1 min-w-[200px] max-w-[320px] space-y-3">
       <div className={`flex items-center gap-2 border-t-2 ${color} pt-2`}>
         <h3 className="text-sm font-medium">{label}</h3>
         <span className="text-xs text-muted-foreground bg-muted rounded-full px-1.5 py-0.5">

@@ -54,29 +54,6 @@ irm https://raw.githubusercontent.com/pwyyeye/dus/main/scripts/install.ps1 | iex
 dus --help
 ```
 
-### 方式二：项目目录直接运行
-
-不需要全局安装，直接在项目目录下载脚本运行：
-
-**macOS / Linux：**
-
-```bash
-cd ~/projects/my-ai-project
-DUS_MODE=auto curl -fsSL https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.sh | bash
-```
-
-**Windows（PowerShell）：**
-
-```powershell
-cd ~\projects\my-ai-project
-$env:DUS_MODE="auto"
-irm https://raw.githubusercontent.com/pwyyeye/dus/main/bridge/dus-setup.ps1 | iex
-```
-
-> `DUS_MODE=auto` 会自动生成配置并启动 Bridge。你也可以先去掉它进行交互式配置。
-
----
-
 ## dus CLI 使用指南
 
 全局安装后，在项目目录使用 `dus` 命令管理 Bridge：

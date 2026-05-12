@@ -16,9 +16,11 @@ import { BoardCardOverlay } from "./board-card";
 import type { Issue } from "@/lib/api";
 
 const COLUMNS = [
-  { status: "todo", label: "待办", color: "border-t-gray-400" },
+  { status: "backlog", label: "待办", color: "border-t-gray-300" },
+  { status: "todo", label: "计划中", color: "border-t-gray-400" },
   { status: "in_progress", label: "进行中", color: "border-t-blue-500" },
   { status: "done", label: "已完成", color: "border-t-green-500" },
+  { status: "blocked", label: "被阻塞", color: "border-t-orange-500" },
   { status: "cancelled", label: "已取消", color: "border-t-red-400" },
 ] as const;
 
@@ -116,6 +118,8 @@ export function BoardView({ issues, onStatusChange, onPriorityChange }: BoardVie
       const activeCol = findColumn(cols, activeId);
       const overCol = findColumn(cols, overId);
 
+      console.log("[DEBUG BoardView handleDragEnd] activeId=", activeId, "overId=", overId, "activeCol=", activeCol, "overCol=", overCol);
+
       if (!activeCol || !overCol) {
         setColumns(buildColumns(issues));
         return;
@@ -126,7 +130,9 @@ export function BoardView({ issues, onStatusChange, onPriorityChange }: BoardVie
 
       // If the card moved to a different column, notify parent
       const currentIssue = issueMap.current.get(activeId);
+      console.log("[DEBUG BoardView handleDragEnd] currentIssue=", currentIssue?.issue_id, "status=", currentIssue?.status, "finalCol=", finalCol);
       if (currentIssue && currentIssue.status !== finalCol) {
+        console.log("[DEBUG BoardView] Calling onStatusChange:", activeId, finalCol);
         onStatusChange(activeId, finalCol);
       } else {
         // Same column — just reset to sort order
@@ -143,7 +149,7 @@ export function BoardView({ issues, onStatusChange, onPriorityChange }: BoardVie
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid grid-cols-4 gap-4">
+      <div className="flex gap-4 overflow-x-auto pb-4">
         {COLUMNS.map((col) => {
           const colIssueIds = columns[col.status] ?? [];
           const colIssues = colIssueIds

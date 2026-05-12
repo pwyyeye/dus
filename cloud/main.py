@@ -3,6 +3,24 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import time
 import logging
+import sys
+
+# 配置日志：输出到 log 文件夹，级别 DEBUG
+LOG_DIR = Path(__file__).parent / "log"
+LOG_DIR.mkdir(exist_ok=True)
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_DIR / "server.log", encoding="utf-8"),
+        logging.StreamHandler(sys.stdout),
+    ],
+)
+
+for logger_name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi"]:
+    logging.getLogger(logger_name).setLevel(logging.DEBUG)
+logging.getLogger("aiosqlite").setLevel(logging.WARNING)
 
 from fastapi import FastAPI, Request, HTTPException, Security, Depends
 from fastapi.middleware.cors import CORSMiddleware

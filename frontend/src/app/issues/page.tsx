@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchIssues, createIssue, updateIssue, Issue, fetchMachines, fetchAgents, fetchLabels,
-  Machine, Agent, Label as LabelType,
+  fetchIssues, createIssue, updateIssue, Issue, fetchMachines, fetchAgents, fetchLabels, fetchProjects, fetchIssue,
+  Machine, Agent, Label as LabelType, Project,
 } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { FilterChips, type FilterChip } from "@/components/filter-chips";
@@ -25,19 +25,21 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { PlusIcon, EyeIcon, ListIcon, LayoutGridIcon, ArrowUpDownIcon } from "lucide-react";
+import { PlusIcon, EyeIcon, EditIcon, ListIcon, LayoutGridIcon, ArrowUpDownIcon } from "lucide-react";
 import { toast } from "sonner";
 import { BoardView } from "@/components/kanban/board-view";
 
-type StatusFilter = "all" | "todo" | "in_progress" | "done" | "cancelled";
+type StatusFilter = "all" | "backlog" | "todo" | "in_progress" | "done" | "blocked" | "cancelled";
 type ViewMode = "list" | "kanban";
 type SortKey = "updated" | "priority" | "created";
 
 const STATUS_CHIPS: FilterChip<StatusFilter>[] = [
   { value: "all", label: "全部" },
-  { value: "todo", label: "待办", dot: "bg-gray-400" },
+  { value: "backlog", label: "待办", dot: "bg-gray-300" },
+  { value: "todo", label: "计划中", dot: "bg-gray-400" },
   { value: "in_progress", label: "进行中", dot: "bg-blue-500" },
   { value: "done", label: "已完成", dot: "bg-green-500" },
+  { value: "blocked", label: "被阻塞", dot: "bg-orange-500" },
   { value: "cancelled", label: "已取消", dot: "bg-red-400" },
 ];
 
@@ -70,8 +72,19 @@ export default function IssuesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [sortKey, setSortKey] = useState<SortKey>("updated");
   const [open, setOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const [selectedProjectName, setSelectedProjectName] = useState<string>("");
   const [selectedAssigneeType, setSelectedAssigneeType] = useState("");
   const [selectedAssigneeId, setSelectedAssigneeId] = useState("");
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingIssue, setEditingIssue] = useState<Issue | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editSelectedProjectName, setEditSelectedProjectName] = useState("");
+  const [editSelectedAssigneeType, setEditSelectedAssigneeType] = useState("");
+  const [editSelectedAssigneeId, setEditSelectedAssigneeId] = useState("");
+  const [pendingEditIssue, setPendingEditIssue] = useState<Issue | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["issues", statusFilter, labelFilter],
@@ -102,6 +115,7 @@ export default function IssuesPage() {
     queryFn: () => fetchAgents({ is_enabled: true }),
   });
   const { data: labels } = useQuery({ queryKey: ["labels"], queryFn: fetchLabels });
+  const { data: projects } = useQuery({ queryKey: ["projects"], queryFn: fetchProjects });
 
   const mutation = useMutation({
     mutationFn: createIssue,
@@ -114,8 +128,10 @@ export default function IssuesPage() {
   });
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: string; status: string }) =>
-      updateIssue(id, { status }),
+    mutationFn: (variables: { id: string; status: string }) => {
+      console.log("[DEBUG statusMutation] Calling updateIssue:", variables.id, variables.status);
+      return updateIssue(variables.id, { status: variables.status });
+    },
     onMutate: async ({ id, status }) => {
       await queryClient.cancelQueries({ queryKey: ["issues"] });
       const queryKey = ["issues", statusFilter, labelFilter];
@@ -129,11 +145,15 @@ export default function IssuesPage() {
       });
       return { previous, queryKey };
     },
-    onError: (_err, _vars, context) => {
+    onError: (err, vars, context) => {
+      console.error("[DEBUG statusMutation] Error:", err, "vars:", vars);
       if (context?.previous && context?.queryKey) {
         queryClient.setQueryData(context.queryKey, context.previous);
       }
-      toast.error("状态更新失败");
+      toast.error("状态更新失败: " + (err?.message || String(err)));
+    },
+    onSuccess: (data, vars) => {
+      console.log("[DEBUG statusMutation] Success! data:", data, "vars:", vars);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["issues"] });
@@ -167,6 +187,54 @@ export default function IssuesPage() {
     },
   });
 
+  const editMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updateIssue>[1] }) =>
+      updateIssue(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
+      setEditOpen(false);
+      setEditingIssue(null);
+      toast.success("Issue 已更新");
+    },
+    onError: (err: Error) => toast.error(`更新失败: ${err.message}`),
+  });
+
+  const openEditDialog = async (issue: Issue) => {
+    try {
+      const fullIssue = await fetchIssue(issue.id);
+      setPendingEditIssue(fullIssue);
+      setEditTitle(fullIssue.title);
+      setEditDescription(fullIssue.description ?? "");
+      setEditSelectedAssigneeType(fullIssue.assignee_type ?? "");
+      setEditSelectedAssigneeId(fullIssue.assignee_id ?? "");
+      const proj = (projects ?? []).find((p: Project) => p.id === fullIssue.project_id);
+      setEditSelectedProjectName(proj?.project_name ?? "");
+    } catch (err) {
+      toast.error("获取Issue详情失败");
+    }
+  };
+
+  // Open dialog after state is set
+  React.useEffect(() => {
+    if (pendingEditIssue) {
+      setEditingIssue(pendingEditIssue);
+      setEditOpen(true);
+      setPendingEditIssue(null);
+    }
+  }, [pendingEditIssue]);
+
+  // Sync form state when dialog opens
+  React.useEffect(() => {
+    if (editOpen && editingIssue) {
+      setEditTitle(editingIssue.title);
+      setEditDescription(editingIssue.description ?? "");
+      setEditSelectedAssigneeType(editingIssue.assignee_type ?? "");
+      setEditSelectedAssigneeId(editingIssue.assignee_id ?? "");
+      const proj = (projects ?? []).find((p: Project) => p.id === editingIssue.project_id);
+      setEditSelectedProjectName(proj?.project_name ?? "");
+    }
+  }, [editOpen, editingIssue, projects]);
+
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
@@ -180,11 +248,16 @@ export default function IssuesPage() {
     if (!title.trim()) return;
     mutation.mutate({
       title, description, priority,
+      project_id: selectedProjectId || undefined,
       assignee_type: assigneeType || undefined,
       assignee_id: assigneeId || undefined,
       agent_cli_id: agentCliId || undefined,
     });
     form.reset();
+    setSelectedProjectId("");
+    setSelectedProjectName("");
+    setSelectedAssigneeType("");
+    setSelectedAssigneeId("");
   };
 
   return (
@@ -310,14 +383,24 @@ export default function IssuesPage() {
                         {formatTime(issue.updated_at)}
                       </TableCell>
                       <TableCell>
-                        <Button
-                          size="icon-xs"
-                          variant="ghost"
-                          onClick={(e) => { e.stopPropagation(); router.push(`/issues/${issue.id}`); }}
-                          title="查看详情"
-                        >
-                          <EyeIcon className="size-3.5" />
-                        </Button>
+                        <div className="flex gap-1">
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={(e) => { e.stopPropagation(); openEditDialog(issue); }}
+                            title="修改"
+                          >
+                            <EditIcon className="size-3.5" />
+                          </Button>
+                          <Button
+                            size="icon-xs"
+                            variant="ghost"
+                            onClick={(e) => { e.stopPropagation(); router.push(`/issues/${issue.id}`); }}
+                            title="查看详情"
+                          >
+                            <EyeIcon className="size-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -342,6 +425,30 @@ export default function IssuesPage() {
             <div className="space-y-2">
               <Label htmlFor="issue-desc">描述</Label>
               <Textarea id="issue-desc" name="description" placeholder="详细描述（可选）..." rows={4} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="issue-project">绑定项目</Label>
+              <Select value={selectedProjectName} onValueChange={(v) => {
+                  const p = (projects ?? []).find((x: Project) => x.project_name === v);
+                  setSelectedProjectId(p?.id ?? "");
+                  setSelectedProjectName(v || "");
+                }}>
+                <SelectTrigger id="issue-project">
+                  <SelectValue placeholder="不绑定（无路径约束）" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(projects ?? []).filter((p: Project) => p.root_path).map((p: Project) => (
+                    <SelectItem key={p.id} value={p.project_name}>
+                      {p.project_name} <span className="text-muted-foreground text-xs ml-1">{p.root_path}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedProjectId && (
+                <p className="text-xs text-muted-foreground">
+                  绑定后 Agent CLI 将在项目路径下操作
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="issue-priority">优先级</Label>
@@ -426,6 +533,127 @@ export default function IssuesPage() {
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>取消</Button>
               <Button type="submit" disabled={mutation.isPending}>
                 {mutation.isPending ? "创建中..." : "创建"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit dialog */}
+      <Dialog open={editOpen} onOpenChange={(open) => { if (!open) { setEditOpen(false); setEditingIssue(null); } }}>
+        <DialogContent className="sm:max-w-[480px]">
+          <DialogHeader>
+            <DialogTitle>修改 Issue</DialogTitle>
+          </DialogHeader>
+          <form key={`edit-form-${editingIssue?.id}`} onSubmit={(e) => {
+            e.preventDefault();
+            if (!editingIssue) return;
+            const formData = new FormData(e.currentTarget);
+            const proj = (projects ?? []).find((p: Project) => p.project_name === editSelectedProjectName);
+            editMutation.mutate({
+              id: editingIssue.id,
+              data: {
+                title: editTitle,
+                description: editDescription || undefined,
+                priority: formData.get("priority") as string,
+                project_id: proj?.id ?? undefined,
+                assignee_type: editSelectedAssigneeType || undefined,
+                assignee_id: editSelectedAssigneeId || undefined,
+              },
+            });
+          }} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-title">标题</Label>
+              <Input id="edit-title" name="title" defaultValue={editTitle} required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-desc">描述</Label>
+              <textarea
+                id="edit-desc"
+                name="description"
+                className="flex min-h-16 w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-base transition-colors outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50"
+                defaultValue={editDescription}
+                rows={4}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-project">绑定项目</Label>
+              <Select value={editSelectedProjectName} onValueChange={(v) => {
+                  setEditSelectedProjectName(v || "");
+                }}>
+                <SelectTrigger id="edit-project">
+                  <SelectValue placeholder="不绑定（无路径约束）" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(projects ?? []).filter((p: Project) => p.root_path).map((p: Project) => (
+                    <SelectItem key={p.id} value={p.project_name}>
+                      {p.project_name} <span className="text-muted-foreground text-xs ml-1">{p.root_path}</span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-priority">优先级</Label>
+              <Select name="priority" defaultValue={editingIssue?.priority ?? "medium"}>
+                <SelectTrigger id="edit-priority"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">低</SelectItem>
+                  <SelectItem value="medium">中</SelectItem>
+                  <SelectItem value="high">高</SelectItem>
+                  <SelectItem value="urgent">紧急</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-assignee-type">分配方式</Label>
+              <Select value={editSelectedAssigneeType} onValueChange={(v) => { setEditSelectedAssigneeType(v || ""); setEditSelectedAssigneeId(""); }}>
+                <SelectTrigger id="edit-assignee-type">
+                  <SelectValue placeholder="不分配（放入任务池）" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">不分配</SelectItem>
+                  <SelectItem value="machine">分配给设备</SelectItem>
+                  <SelectItem value="agent">分配给智能体</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {editSelectedAssigneeType === "machine" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-assignee">目标设备</Label>
+                <Select value={editSelectedAssigneeId} onValueChange={(v) => setEditSelectedAssigneeId(v || "")}>
+                  <SelectTrigger id="edit-assignee">
+                    <SelectValue placeholder="选择设备..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(machines ?? []).map((m: Machine) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.machine_name} ({(m.available_agents ?? []).map(a => a.agent_type).join(", ") || m.agent_type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {editSelectedAssigneeType === "agent" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-assignee">目标智能体</Label>
+                <Select value={editSelectedAssigneeId} onValueChange={(v) => setEditSelectedAssigneeId(v || "")}>
+                  <SelectTrigger id="edit-assignee">
+                    <SelectValue placeholder="选择智能体..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(agents ?? []).map((a: Agent) => (
+                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => { setEditOpen(false); setEditingIssue(null); }}>取消</Button>
+              <Button type="submit" disabled={editMutation.isPending}>
+                {editMutation.isPending ? "保存中..." : "保存"}
               </Button>
             </div>
           </form>

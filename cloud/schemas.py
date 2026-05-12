@@ -54,13 +54,16 @@ class TaskPriority(str, Enum):
 
 
 class IssueStatus(str, Enum):
+    backlog = "backlog"
     todo = "todo"
     in_progress = "in_progress"
     done = "done"
+    blocked = "blocked"
     cancelled = "cancelled"
 
 
 class IssuePriority(str, Enum):
+    none = "none"
     low = "low"
     medium = "medium"
     high = "high"

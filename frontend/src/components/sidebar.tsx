@@ -28,7 +28,6 @@ const navGroups: NavGroup[] = [
     title: "工作区",
     items: [
       { href: "/issues", label: "Issue 管理", icon: "🎫" },
-      { href: "/kanban", label: "看板", icon: "📌" },
       { href: "/projects", label: "项目管理", icon: "📁" },
       { href: "/agents", label: "智能体", icon: "🤖" },
       { href: "/autopilots", label: "定时任务", icon: "⏰" },
@@ -38,7 +37,6 @@ const navGroups: NavGroup[] = [
     title: "配置",
     items: [
       { href: "/machines", label: "设备管理", icon: "🖥️" },
-      { href: "/devices", label: "设备仪表盘", icon: "📈" },
       { href: "/tasks", label: "任务管理", icon: "📋" },
       { href: "/skills", label: "技能管理", icon: "🎯" },
       { href: "/analytics", label: "使用量分析", icon: "📉" },

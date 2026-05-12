@@ -17,9 +17,11 @@ const statusConfig: Record<string, { label: string; variant: BadgeVariant }> = {
   online: { label: "在线", variant: "default" },
   offline: { label: "离线", variant: "secondary" },
   // Issue statuses
-  todo: { label: "待办", variant: "outline" },
+  backlog: { label: "待办", variant: "secondary" },
+  todo: { label: "计划中", variant: "outline" },
   in_progress: { label: "进行中", variant: "default" },
   done: { label: "已完成", variant: "default" },
+  blocked: { label: "被阻塞", variant: "destructive" },
   // Project statuses
   active: { label: "活跃", variant: "default" },
   archived: { label: "已归档", variant: "secondary" },

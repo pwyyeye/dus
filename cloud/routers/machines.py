@@ -3,11 +3,11 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
-from models import Machine, Task, Project, Agent, ApiBan
+from models import Machine, Task, Project, Agent, ApiBan, Issue
 from schemas import (
     MachineCreate,
     MachineResponse,
@@ -393,12 +393,26 @@ async def poll_tasks(
     assigned_result = await db.execute(assigned_stmt)
     assigned_tasks = list(assigned_result.scalars().all())
 
-    # Auto-claim: unassigned pending tasks ONLY within machine's own project
-    unassigned_stmt = select(Task).where(
-        Task.target_machine_id.is_(None),
-        Task.status == "pending",
-        Task.project_id == machine.project_id,
-    ).order_by(Task.created_at.asc())
+    # Auto-claim: unassigned pending tasks
+    # 条件1: 同一项目的任务
+    # 条件2: Issue 处于 in_progress 且无 assignee（可被任意 agent 认领）
+    unassigned_stmt = (
+        select(Task)
+        .join(Issue, Task.issue_id == Issue.id, isouter=True)
+        .where(
+            Task.target_machine_id.is_(None),
+            Task.status == "pending",
+            or_(
+                Task.project_id == machine.project_id,
+                and_(
+                    Task.issue_id.isnot(None),
+                    Issue.status == "in_progress",
+                    Issue.assignee_id.is_(None),
+                ),
+            ),
+        )
+        .order_by(Task.created_at.asc())
+    )
     unassigned_result = await db.execute(unassigned_stmt)
     unassigned_tasks = list(unassigned_result.scalars().all())
 
@@ -453,27 +467,39 @@ async def poll_tasks(
             mcp_config=agent_obj.mcp_config,
         )
 
-    # Claim unassigned tasks
+    # Claim unassigned tasks (atomic to prevent concurrent claim)
+    from sqlalchemy import update
     for task in unassigned_tasks:
-        task.target_machine_id = machine.id
-        task.status = "dispatched"
-        prior_session, prior_workdir = await resolve_prior_session(task.issue_id)
-        agent_config = await resolve_agent_config(task.issue_id)
-        poll_tasks_out.append(
-            PollTaskResponse(
-                id=task.id,
-                task_id=task.task_id,
-                instruction=task.instruction,
-                status="dispatched",
-                project_id=task.project_id,
-                agent_capability=machine.agent_capability,
-                agent_cli_id=task.agent_cli_id,
-                issue_id=task.issue_id,
-                prior_session_id=prior_session,
-                prior_work_dir=prior_workdir,
-                agent_config=agent_config,
+        # Atomic claim: only update if still pending and unassigned
+        claim_stmt = (
+            update(Task)
+            .where(
+                Task.id == task.id,
+                Task.target_machine_id.is_(None),
+                Task.status == "pending"
             )
+            .values(target_machine_id=machine.id, status="dispatched")
         )
+        result = await db.execute(claim_stmt)
+        if result.rowcount == 1:
+            # Successfully claimed
+            prior_session, prior_workdir = await resolve_prior_session(task.issue_id)
+            agent_config = await resolve_agent_config(task.issue_id)
+            poll_tasks_out.append(
+                PollTaskResponse(
+                    id=task.id,
+                    task_id=task.task_id,
+                    instruction=task.instruction,
+                    status="dispatched",
+                    project_id=task.project_id,
+                    agent_capability=machine.agent_capability,
+                    agent_cli_id=task.agent_cli_id,
+                    issue_id=task.issue_id,
+                    prior_session_id=prior_session,
+                    prior_work_dir=prior_workdir,
+                    agent_config=agent_config,
+                )
+            )
 
     # Pre-assigned tasks
     for task in assigned_tasks:
