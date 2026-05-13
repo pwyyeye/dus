@@ -146,6 +146,7 @@ export interface Issue {
   agent_cli_id?: string | null;
   created_at: string;
   updated_at: string;
+  task_count?: number;
   tasks?: Task[];
   sub_issues?: Issue[];
   labels?: Label[];

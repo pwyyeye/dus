@@ -279,7 +279,7 @@ export default function IssueDetailPage({ params }: PageProps) {
         <Button
           size="sm"
           variant="outline"
-          onClick={() => router.push("/issues")}
+          onClick={() => router.back()}
         >
           <ArrowLeftIcon className="size-4 mr-1" />
           返回列表

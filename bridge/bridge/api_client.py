@@ -173,6 +173,11 @@ class ApiClient:
             return tasks
         return []
 
+    async def start_task(self, task_id: str) -> bool:
+        """Notify server that bridge has started executing the task (heartbeat signal)."""
+        result = await self._request("POST", f"/tasks/{task_id}/start")
+        return bool(result and result.get("success"))
+
     async def update_task_status(self, task_id: str, status: str) -> bool:
         """Update task status."""
         result = await self._request("PUT", f"/tasks/{task_id}", json={"status": status})
@@ -216,6 +221,11 @@ class ApiClient:
             return True
         result = await self._request("POST", f"/tasks/{task_id}/progress", json=payload)
         return bool(result and result.get("success"))
+
+    async def recover_orphan_tasks(self) -> dict | None:
+        """Request server to recover orphan tasks stuck in dispatched/running."""
+        result = await self._request("POST", "/tasks/recover-orphans")
+        return result.get("data") if result else None
 
     async def update_agent_status(self, agent_status: str) -> bool:
         """Update agent status (idle/busy/offline) for this device."""

@@ -20,6 +20,7 @@ from schemas import (
     IssueDetailResponse,
     IssueStatus,
     TaskListResponse,
+    TaskResponse,
     ApiResponse,
     IssueDependencyCreate,
     IssueDependencyResponse,
@@ -160,26 +161,51 @@ async def list_issues(
     db: AsyncSession = Depends(get_db),
 ):
     """List issues with optional filters and pagination."""
-    stmt = select(Issue).where(Issue.parent_issue_id == None)
+    # Build base filter conditions
+    conditions = [Issue.parent_issue_id == None]
     if status:
-        stmt = stmt.where(Issue.status == status.value)
+        conditions.append(Issue.status == status.value)
     if project_id:
-        stmt = stmt.where(Issue.project_id == project_id)
+        conditions.append(Issue.project_id == project_id)
     if assignee_id:
-        stmt = stmt.where(Issue.assignee_id == assignee_id)
-    if label_id:
-        stmt = stmt.join(IssueLabel).where(IssueLabel.label_id == label_id)
+        conditions.append(Issue.assignee_id == assignee_id)
 
-    count_stmt = select(func.count()).select_from(stmt.subquery())
+    # Count query
+    count_stmt = select(func.count()).select_from(Issue).where(*conditions)
     count_result = await db.execute(count_stmt)
     total = count_result.scalar() or 0
 
+    # Main query with task_count subquery
+    task_count_subq = (
+        select(Task.issue_id, func.count().label("task_count"))
+        .group_by(Task.issue_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(Issue, task_count_subq.c.task_count)
+        .outerjoin(task_count_subq, Issue.id == task_count_subq.c.issue_id)
+        .where(*conditions)
+    )
+    if label_id:
+        stmt = stmt.join(IssueLabel).where(IssueLabel.label_id == label_id)
+
     stmt = stmt.order_by(Issue.created_at.desc()).offset(offset).limit(limit)
     result = await db.execute(stmt)
-    issues = result.scalars().all()
+    rows = result.all()
 
     return ApiResponse(
-        data=[IssueListResponse.model_validate(i).model_dump(mode="json") for i in issues],
+        data=[
+            IssueListResponse(
+                **{
+                    k: v
+                    for k, v in IssueListResponse.model_validate(row[0]).model_dump(mode="json").items()
+                    if k != "task_count"
+                },
+                task_count=row[1] or 0,
+            ).model_dump(mode="json")
+            for row in rows
+        ],
         meta={"total": total, "limit": limit, "offset": offset},
     )
 
@@ -430,7 +456,7 @@ async def list_issue_tasks(
     tasks = tasks_result.scalars().all()
 
     return ApiResponse(
-        data=[TaskListResponse.model_validate(t).model_dump(mode="json") for t in tasks]
+        data=[TaskResponse.model_validate(t).model_dump(mode="json") for t in tasks]
     )
 
 

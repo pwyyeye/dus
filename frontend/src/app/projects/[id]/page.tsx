@@ -11,7 +11,9 @@ import {
   fetchMachines,
   fetchAgents,
   fetchIssue,
+  fetchIssueTasks,
   Issue,
+  Task,
   Machine,
   Agent,
   Project,
@@ -88,6 +90,8 @@ export default function ProjectDetailPage() {
   const [editSelectedAgentCli, setEditSelectedAgentCli] = useState("");
   const [editSelectedPriority, setEditSelectedPriority] = useState("medium");
   const [pendingEditIssue, setPendingEditIssue] = useState<Issue | null>(null);
+  const [taskResultOpen, setTaskResultOpen] = useState(false);
+  const [taskResultIssue, setTaskResultIssue] = useState<Issue | null>(null);
 
   const { data: project, isLoading: projectLoading } = useQuery({
     queryKey: ["project", projectId],
@@ -123,6 +127,17 @@ export default function ProjectDetailPage() {
     queryKey: ["agents"],
     queryFn: () => fetchAgents({ is_enabled: true }),
   });
+
+  const { data: taskResultTasks } = useQuery({
+    queryKey: ["tasks", "issue", taskResultIssue?.id],
+    queryFn: () => fetchIssueTasks(taskResultIssue!.id),
+    enabled: !!taskResultIssue,
+  });
+
+  const openTaskResultDialog = (issue: Issue) => {
+    setTaskResultIssue(issue);
+    setTaskResultOpen(true);
+  };
 
   const mutation = useMutation({
     mutationFn: createIssue,
@@ -367,6 +382,7 @@ export default function ProjectDetailPage() {
           onStatusChange={(id, status) => statusMutation.mutate({ id, status })}
           onPriorityChange={(id, priority) => priorityMutation.mutate({ id, priority })}
           onEdit={openEditDialog}
+          onViewTaskResult={openTaskResultDialog}
         />
       ) : (
         <Card>
@@ -668,6 +684,53 @@ export default function ProjectDetailPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task Result Dialog */}
+      <Dialog open={taskResultOpen} onOpenChange={setTaskResultOpen}>
+        <DialogContent className="sm:max-w-[900px] max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>任务结果 - {taskResultIssue?.title}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {taskResultTasks && taskResultTasks.length > 0 ? (
+              taskResultTasks.map((task) => (
+                <div key={task.id} className="border rounded-lg p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs text-muted-foreground">{task.task_id}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${
+                      task.status === "completed" ? "bg-green-100 text-green-700" :
+                      task.status === "failed" ? "bg-red-100 text-red-700" :
+                      task.status === "running" ? "bg-blue-100 text-blue-700" :
+                      "bg-gray-100 text-gray-700"
+                    }`}>{task.status}</span>
+                  </div>
+                  {task.result && Object.keys(task.result).length > 0 && (
+                    <div className="mt-2 space-y-2">
+                      {(task.result as {stdout?: string}).stdout && (
+                        <div>
+                          <p className="text-xs font-medium text-muted-foreground mb-1">标准输出 (stdout):</p>
+                          <pre className="text-xs bg-muted p-2 rounded whitespace-pre-wrap break-words max-h-40">{(task.result as {stdout?: string}).stdout}</pre>
+                        </div>
+                      )}
+                      {(task.result as {stderr?: string}).stderr && (
+                        <div>
+                          <p className="text-xs font-medium text-red-600 mb-1">错误输出 (stderr):</p>
+                          <pre className="text-xs bg-red-50 p-2 rounded whitespace-pre-wrap break-words max-h-40">{(task.result as {stderr?: string}).stderr}</pre>
+                        </div>
+                      )}
+                      {(task.result as {exit_code?: number}).exit_code !== undefined && (
+                        <p className="text-xs text-muted-foreground">退出码: {(task.result as {exit_code?: number}).exit_code}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">暂无任务记录</p>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

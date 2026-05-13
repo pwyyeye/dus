@@ -333,6 +333,7 @@ class IssueListResponse(BaseModel):
     agent_cli_id: str | None = None
     created_at: datetime
     updated_at: datetime
+    task_count: int = 0
 
     model_config = {"from_attributes": True}
 

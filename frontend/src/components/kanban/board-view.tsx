@@ -39,9 +39,10 @@ interface BoardViewProps {
   onStatusChange: (issueId: string, newStatus: string) => void;
   onPriorityChange: (issueId: string, priority: string) => void;
   onEdit?: (issue: Issue) => void;
+  onViewTaskResult?: (issue: Issue) => void;
 }
 
-export function BoardView({ issues, onStatusChange, onPriorityChange, onEdit }: BoardViewProps) {
+export function BoardView({ issues, onStatusChange, onPriorityChange, onEdit, onViewTaskResult }: BoardViewProps) {
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
 
   // Local column state for optimistic drag feedback
@@ -166,6 +167,7 @@ export function BoardView({ issues, onStatusChange, onPriorityChange, onEdit }: 
               issues={colIssues}
               onPriorityChange={onPriorityChange}
               onEdit={onEdit}
+              onViewTaskResult={onViewTaskResult}
             />
           );
         })}

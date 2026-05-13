@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PriorityPicker } from "./priority-picker";
-import { EditIcon } from "lucide-react";
+import { EditIcon, EyeIcon } from "lucide-react";
 import type { Issue } from "@/lib/api";
 
 const priorityConfig: Record<string, { label: string; color: string }> = {
@@ -21,9 +21,10 @@ interface BoardCardProps {
   issue: Issue;
   onPriorityChange: (issueId: string, priority: string) => void;
   onEdit?: (issue: Issue) => void;
+  onViewTaskResult?: (issue: Issue) => void;
 }
 
-export function BoardCard({ issue, onPriorityChange, onEdit }: BoardCardProps) {
+export function BoardCard({ issue, onPriorityChange, onEdit, onViewTaskResult }: BoardCardProps) {
   const router = useRouter();
   const {
     attributes,
@@ -58,6 +59,16 @@ export function BoardCard({ issue, onPriorityChange, onEdit }: BoardCardProps) {
           <div className="flex items-start justify-between gap-2">
             <p className="text-sm font-medium line-clamp-2">{issue.title}</p>
             <div className="flex items-center gap-1 shrink-0">
+              {issue.status === "done" && (issue.task_count ?? 0) > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={(e) => { e.stopPropagation(); onViewTaskResult?.(issue); }}
+                  title="查看任务结果"
+                >
+                  <EyeIcon className="size-3.5" />
+                </Button>
+              )}
               {onEdit && (
                 <Button
                   variant="ghost"

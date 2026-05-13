@@ -580,3 +580,100 @@ async def append_chat_message(
         data=ChatMessageResponse.model_validate(chat_message).model_dump(mode="json"),
         message="Message appended",
     )
+
+
+# ── Start Task ──
+
+
+@router.post("/{task_uuid}/start", response_model=ApiResponse)
+async def start_task(
+    task_uuid: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Mark a dispatched task as actually started running (heartbeat signal).
+
+    Bridge calls this when it begins executing the agent. This is distinct from
+    claim/dispatch because a task can be dispatched but never started (e.g. client crash).
+    This endpoint updates started_at and status=running, enabling crash recovery.
+    """
+    stmt = select(Task).where(Task.id == task_uuid)
+    result = await db.execute(stmt)
+    task = result.scalar_one_or_none()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.status not in ("pending", "dispatched"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot start task in '{task.status}' state",
+        )
+
+    now = datetime.now(timezone.utc)
+    task.status = "running"
+    task.started_at = now
+
+    log = TaskLog(
+        task_id=task.id,
+        event_type="running",
+        message="Task started by bridge",
+    )
+    db.add(log)
+
+    try:
+        await ws_manager.broadcast(
+            "task.updated",
+            {"id": str(task.id), "status": task.status, "task_id": task.task_id},
+        )
+    except Exception:
+        pass
+
+    return ApiResponse(
+        data=TaskResponse.model_validate(task).model_dump(mode="json"),
+        message="Task started",
+    )
+
+
+# ── Orphan Task Recovery ──
+
+
+@router.post("/recover-orphans", response_model=ApiResponse)
+async def recover_orphan_tasks(
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-cover orphaned tasks that were dispatched/running but never completed.
+
+    Called by Bridge on registration or server startup to recover from crashes.
+    Returns all tasks stuck in 'running' or 'dispatched' state with no active bridge.
+    """
+    # Find tasks stuck in dispatched/running without a completed_at timestamp
+    # older than 1 hour (likely abandoned)
+    from datetime import timedelta
+
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
+
+    orphan_stmt = select(Task).where(
+        Task.status.in_(["dispatched", "running"]),
+        Task.completed_at.is_(None),
+        Task.started_at < cutoff,
+    )
+    orphan_result = await db.execute(orphan_stmt)
+    orphans = orphan_result.scalars().all()
+
+    recovered_count = 0
+    for task in orphans:
+        old_status = task.status
+        task.status = "pending"
+        task.started_at = None
+        task.target_machine_id = None
+        log = TaskLog(
+            task_id=task.id,
+            event_type="recovered",
+            message=f"Orphan recovered from '{old_status}' state",
+        )
+        db.add(log)
+        recovered_count += 1
+
+    return ApiResponse(
+        data={"recovered_count": recovered_count, "orphans": [t.task_id for t in orphans]},
+        message=f"Recovered {recovered_count} orphan task(s)",
+    )

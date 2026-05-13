@@ -101,6 +101,14 @@ class Bridge:
         # Start GC loop
         self.gc.start()
 
+        # Recover orphan tasks stuck in dispatched/running state
+        try:
+            recover_result = await self.api.recover_orphan_tasks()
+            if recover_result and recover_result.get("recovered_count", 0) > 0:
+                logger.info(f"Recovered {recover_result['recovered_count']} orphan tasks: {recover_result.get('orphans', [])}")
+        except Exception as e:
+            logger.warning(f"Orphan recovery failed (non-fatal): {e}")
+
         logger.info(f"Polling every {self.config.cloud.poll_interval}s ...")
         while self._running:
             try:
@@ -232,7 +240,9 @@ class Bridge:
             logger.info(f"Task {task_name}: resuming session_id={prior_session_id}, work_dir={prior_work_dir}")
         elif project_root_path:
             logger.info(f"Task {task_name}: using project_root_path={project_root_path}")
-        await self.api.update_task_status(task_id, "running")
+
+        # Notify server that task has started (for crash recovery tracking)
+        await self.api.start_task(task_id)
 
         # Prepare workdir (prefer prior work_dir for session resumption, then project root)
         if prior_work_dir:
@@ -354,7 +364,10 @@ class Bridge:
         GCLoop.write_meta(workdir, task_name, "completed" if result.get("error_type") is None else "failed")
 
     async def _watch_cancellation(self, task_id: str, cancel_event: asyncio.Event, executor: AgentExecutor):
-        """Poll task status and cancel execution if the task is marked cancelled."""
+        """Poll task status and cancel execution if the task is marked cancelled.
+        Also serves as a heartbeat to keep the task alive on the server.
+        """
+        heartbeat_interval = 30  # seconds - heartbeat to server
         while not cancel_event.is_set():
             try:
                 task = await self.api.get_task(task_id)
@@ -362,10 +375,12 @@ class Bridge:
                     logger.info(f"Task {task_id}: cancellation detected, stopping executor...")
                     executor.cancel()
                     return
+                # Heartbeat: submit progress to signal task is still alive
+                await self.api.submit_progress(task_id, "", "")
             except Exception as e:
                 logger.debug(f"Cancellation poll error for task {task_id}: {e}")
             try:
-                await asyncio.wait_for(cancel_event.wait(), timeout=5.0)
+                await asyncio.wait_for(cancel_event.wait(), timeout=heartbeat_interval)
             except asyncio.TimeoutError:
                 pass
 
