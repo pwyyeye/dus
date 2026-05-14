@@ -3,13 +3,73 @@ from __future__ import annotations
 import asyncio
 import os
 import platform
+import re
 import shutil
 import subprocess
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from loguru import logger
+
+
+# ---------------------------------------------------------------------------
+# Slash command parsing
+# ---------------------------------------------------------------------------
+
+@dataclass
+class ParsedInstruction:
+    """Result of parsing slash commands from an instruction string."""
+    commands: dict[str, str] = field(default_factory=dict)
+    clean_instruction: str = ""
+
+
+# Pattern: /command or /command arg (arg can be quoted to include spaces)
+_SLASH_CMD_RE = re.compile(
+    r"""
+    /(\w+)          # command name (alphanumeric + underscore)
+    \s*             # optional whitespace
+    (?:             # optional argument group
+        "([^"]*)"   #   quoted argument (capture group 2)
+        |           #   OR
+        (\S+)       #   unquoted argument (capture group 3)
+    )?              # end optional argument
+    """,
+    re.VERBOSE,
+)
+
+
+def _parse_slash_commands(instruction: str) -> ParsedInstruction:
+    """Parse /command arg patterns from the beginning of an instruction.
+
+    Scans left-to-right for /command tokens at the start. Stops at the first
+    token that is not a /command. Returns parsed commands and the remaining
+    clean instruction text.
+
+    Examples:
+        "/model opus fix the bug" → {model: "opus"}, "fix the bug"
+        "/resume abc /allowedTools bash,read list files" → {resume: "abc", allowedTools: "bash,read"}, "list files"
+        "fix the /model bug" → {}, "fix the /model bug"
+    """
+    commands: dict[str, str] = {}
+    pos = 0
+    text = instruction.lstrip()
+
+    while pos < len(text) and text[pos] == "/":
+        m = _SLASH_CMD_RE.match(text, pos)
+        if not m:
+            break
+        cmd_name = m.group(1)
+        cmd_arg = m.group(2) if m.group(2) is not None else m.group(3)
+        commands[cmd_name] = cmd_arg or ""
+        pos = m.end()
+        # skip whitespace between commands
+        while pos < len(text) and text[pos] in (" ", "\t"):
+            pos += 1
+
+    clean = text[pos:].lstrip()
+    return ParsedInstruction(commands=commands, clean_instruction=clean)
 
 
 class AgentExecutor:
@@ -128,10 +188,24 @@ class ClaudeCodeExecutor(AgentExecutor):
         mcp_config: dict | None = None,
     ) -> dict:
         self._cancelled = False
+
+        # Parse /commands from instruction
+        parsed = _parse_slash_commands(instruction)
+        clean = parsed.clean_instruction or instruction
+
+        # /command args override agent_config values
+        effective_model = parsed.commands.get("model") or model
+        effective_resume = parsed.commands.get("resume") or prior_session_id
+        effective_permission = parsed.commands.get("permissionMode")
+        effective_allowed_tools = parsed.commands.get("allowedTools")
+
+        if parsed.commands:
+            logger.info(f"Parsed slash commands: {parsed.commands}")
+
         # Prepend agent instructions if provided
-        effective_instruction = instruction
+        effective_instruction = clean
         if agent_instructions:
-            effective_instruction = f"{agent_instructions}\n\n---\n\n{instruction}"
+            effective_instruction = f"{agent_instructions}\n\n---\n\n{clean}"
         logger.info(f"Executing Claude Code: {effective_instruction[:100]}...")
         effective_workdir = prior_work_dir or workdir
         if prior_work_dir:
@@ -139,11 +213,15 @@ class ClaudeCodeExecutor(AgentExecutor):
         try:
             resolved_path, use_shell = _resolve_executable(self.agent_path)
 
-            args = ["--print", "--permission-mode", "bypassPermissions"]
-            if model:
-                args.extend(["--model", model])
-            if prior_session_id:
-                args.extend(["--resume", prior_session_id])
+            permission_mode = effective_permission or "bypassPermissions"
+            args = ["--print", "--permission-mode", permission_mode]
+            if effective_model:
+                args.extend(["--model", effective_model])
+            if effective_resume:
+                args.extend(["--resume", effective_resume])
+            if effective_allowed_tools:
+                tools = [t.strip() for t in effective_allowed_tools.split(",") if t.strip()]
+                args.extend(["--allowedTools", *tools])
             if custom_args:
                 args.extend(custom_args)
             args.append(effective_instruction)
@@ -316,15 +394,32 @@ class CodexExecutor(AgentExecutor):
         mcp_config: dict | None = None,
     ) -> dict:
         self._cancelled = False
-        logger.info(f"Executing Codex CLI: {instruction[:100]}...")
+
+        # Parse /commands from instruction
+        parsed = _parse_slash_commands(instruction)
+        clean = parsed.clean_instruction or instruction
+        effective_model = parsed.commands.get("model") or model
+
+        if parsed.commands:
+            logger.info(f"Parsed slash commands: {parsed.commands}")
+        logger.info(f"Executing Codex CLI: {clean[:100]}...")
         effective_workdir = prior_work_dir or workdir
         try:
             resolved_path, use_shell = _resolve_executable(self.agent_path)
             if use_shell:
-                cmd = f'{resolved_path} --print "{instruction.replace(chr(34), chr(92)+chr(34))}"'
+                safe = clean.replace('"', '\\"')
+                parts = [f'"{resolved_path}"', "--print"]
+                if effective_model:
+                    parts.extend(["--model", effective_model])
+                parts.append(f'"{safe}"')
+                cmd = " ".join(parts)
                 create_proc = asyncio.create_subprocess_shell
             else:
-                cmd = (resolved_path, "--print", instruction)
+                cmd_parts = [resolved_path, "--print"]
+                if effective_model:
+                    cmd_parts.extend(["--model", effective_model])
+                cmd_parts.append(clean)
+                cmd = tuple(cmd_parts)
                 create_proc = asyncio.create_subprocess_exec
 
             env = _build_env(env_vars)
