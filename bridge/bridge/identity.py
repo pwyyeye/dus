@@ -67,6 +67,7 @@ def _write_uuid_file(value: str) -> None:
             os.chmod(tmp, 0o600)
         except Exception:
             pass
-        tmp.replace(_MACHINE_UUID_FILE)
+        # Use os.replace for atomic cross-platform rename
+        os.replace(tmp, _MACHINE_UUID_FILE)
     except Exception as e:
         logger.warning(f"Failed to persist machine UUID: {e}")

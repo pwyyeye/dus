@@ -120,8 +120,6 @@ export function BoardView({ issues, onStatusChange, onPriorityChange, onEdit, on
       const activeCol = findColumn(cols, activeId);
       const overCol = findColumn(cols, overId);
 
-      console.log("[DEBUG BoardView handleDragEnd] activeId=", activeId, "overId=", overId, "activeCol=", activeCol, "overCol=", overCol);
-
       if (!activeCol || !overCol) {
         setColumns(buildColumns(issues));
         return;
@@ -132,9 +130,7 @@ export function BoardView({ issues, onStatusChange, onPriorityChange, onEdit, on
 
       // If the card moved to a different column, notify parent
       const currentIssue = issueMap.current.get(activeId);
-      console.log("[DEBUG BoardView handleDragEnd] currentIssue=", currentIssue?.issue_id, "status=", currentIssue?.status, "finalCol=", finalCol);
       if (currentIssue && currentIssue.status !== finalCol) {
-        console.log("[DEBUG BoardView] Calling onStatusChange:", activeId, finalCol);
         onStatusChange(activeId, finalCol);
       } else {
         // Same column — just reset to sort order

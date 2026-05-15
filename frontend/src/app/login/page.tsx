@@ -25,8 +25,10 @@ function LoginForm() {
     if (res.ok) {
       const from = searchParams.get("from") || "/tasks";
       router.push(from);
-    } else {
+    } else if (res.status === 401) {
       setError("密码错误");
+    } else {
+      setError("登录失败，请稍后重试");
     }
     setLoading(false);
   };

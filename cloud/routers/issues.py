@@ -556,6 +556,8 @@ async def list_issue_messages(
             break
     if not active_session:
         # Return most recent session if no active one
+        if not issue.chat_sessions:
+            return ApiResponse(data=[])
         active_session = max(issue.chat_sessions, key=lambda s: s.created_at)
 
     messages = [

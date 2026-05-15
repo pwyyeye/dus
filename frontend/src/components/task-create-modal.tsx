@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { createTask, fetchMachines, fetchProjects, fetchTemplates, Machine, Project, Template } from "@/lib/api";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -83,6 +84,9 @@ export function TaskCreateModal({ open, onOpenChange, trigger, onSuccess }: Task
       queryClient.invalidateQueries({ queryKey: ["tasks"] });
       handleClose();
       onSuccess?.();
+    },
+    onError: (err: unknown) => {
+      toast.error("创建失败: " + (err instanceof Error ? err.message : String(err)));
     },
   });
 

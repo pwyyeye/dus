@@ -146,7 +146,6 @@ export default function IssuesPage() {
 
   const statusMutation = useMutation({
     mutationFn: (variables: { id: string; status: string }) => {
-      console.log("[DEBUG statusMutation] Calling updateIssue:", variables.id, variables.status);
       return updateIssue(variables.id, { status: variables.status });
     },
     onMutate: async ({ id, status }) => {
@@ -163,14 +162,10 @@ export default function IssuesPage() {
       return { previous, queryKey };
     },
     onError: (err, vars, context) => {
-      console.error("[DEBUG statusMutation] Error:", err, "vars:", vars);
       if (context?.previous && context?.queryKey) {
         queryClient.setQueryData(context.queryKey, context.previous);
       }
       toast.error("状态更新失败: " + (err?.message || String(err)));
-    },
-    onSuccess: (data, vars) => {
-      console.log("[DEBUG statusMutation] Success! data:", data, "vars:", vars);
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["issues"] });

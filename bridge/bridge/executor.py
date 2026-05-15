@@ -149,6 +149,25 @@ def _decode_output(data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
+async def _handle_timeout(proc: asyncio.subprocess.Process | None, readers: asyncio.Task, stdout_lines: list[str]) -> dict:
+    """Handle execution timeout: kill process, drain readers, return timeout result."""
+    try:
+        if proc:
+            proc.kill()
+    except Exception:
+        pass
+    try:
+        await asyncio.wait_for(readers, timeout=5.0)
+    except asyncio.TimeoutError:
+        readers.cancel()
+        try:
+            await readers
+        except asyncio.CancelledError:
+            pass
+    logger.warning("Execution timed out")
+    return {"exit_code": -1, "stdout": "".join(stdout_lines), "stderr": "Execution timeout", "error_type": "timeout"}
+
+
 async def _read_stream(
     stream: asyncio.StreamReader,
     lines: list[str],
@@ -253,21 +272,7 @@ class ClaudeCodeExecutor(AgentExecutor):
             try:
                 await asyncio.wait_for(readers, timeout=self.timeout)
             except asyncio.TimeoutError:
-                try:
-                    if self._proc:
-                        self._proc.kill()
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(readers, timeout=5.0)
-                except asyncio.TimeoutError:
-                    readers.cancel()
-                    try:
-                        await readers
-                    except asyncio.CancelledError:
-                        pass
-                logger.warning("Execution timed out")
-                return {"exit_code": -1, "stdout": "".join(stdout_lines), "stderr": "Execution timeout", "error_type": "timeout"}
+                return await _handle_timeout(self._proc, readers, stdout_lines)
 
             stdout = "".join(stdout_lines)
             stderr = "".join(stderr_lines)
@@ -341,21 +346,7 @@ class GenericAgentExecutor(AgentExecutor):
                     self._proc.stdin.close()
                 await asyncio.wait_for(readers, timeout=self.timeout)
             except asyncio.TimeoutError:
-                try:
-                    if self._proc:
-                        self._proc.kill()
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(readers, timeout=5.0)
-                except asyncio.TimeoutError:
-                    readers.cancel()
-                    try:
-                        await readers
-                    except asyncio.CancelledError:
-                        pass
-                logger.warning("Execution timed out")
-                return {"exit_code": -1, "stdout": "".join(stdout_lines), "stderr": "Execution timeout", "error_type": "timeout"}
+                return await _handle_timeout(self._proc, readers, stdout_lines)
 
             stdout = "".join(stdout_lines)
             stderr = "".join(stderr_lines)
@@ -441,21 +432,7 @@ class CodexExecutor(AgentExecutor):
             try:
                 await asyncio.wait_for(readers, timeout=self.timeout)
             except asyncio.TimeoutError:
-                try:
-                    if self._proc:
-                        self._proc.kill()
-                except Exception:
-                    pass
-                try:
-                    await asyncio.wait_for(readers, timeout=5.0)
-                except asyncio.TimeoutError:
-                    readers.cancel()
-                    try:
-                        await readers
-                    except asyncio.CancelledError:
-                        pass
-                logger.warning("Execution timed out")
-                return {"exit_code": -1, "stdout": "".join(stdout_lines), "stderr": "Execution timeout", "error_type": "timeout"}
+                return await _handle_timeout(self._proc, readers, stdout_lines)
 
             stdout = "".join(stdout_lines)
             stderr = "".join(stderr_lines)
