@@ -12,6 +12,7 @@ from bridge.config import load_config, BridgeConfig, detect_available_agents, sa
 from bridge.api_client import ApiClient
 from bridge.executor import get_executor, AgentExecutor
 from bridge.logger import setup_logger
+from bridge.checkpoint import write_checkpoint, read_checkpoint, remove_checkpoint, find_checkpoints
 from bridge.health import HealthServer
 from bridge.gc import GCLoop
 from bridge.identity import ensure_machine_uuid
@@ -108,6 +109,28 @@ class Bridge:
                 logger.info(f"Recovered {recover_result['recovered_count']} orphan tasks: {recover_result.get('orphans', [])}")
         except Exception as e:
             logger.warning(f"Orphan recovery failed (non-fatal): {e}")
+
+        # Recover tasks from local checkpoint files (immediate recovery, no timeout)
+        try:
+            workdir_template = self.config.agent.workdir_template
+            checkpoints = find_checkpoints(workdir_template)
+            if checkpoints:
+                logger.info(f"Found {len(checkpoints)} checkpoint(s) from previous run")
+                for cp in checkpoints:
+                    logger.info(f"Checkpoint: task={cp.task_name}, workdir={cp.workdir}, agent={cp.agent_type}")
+                    # Re-dispatch the task for execution with full context
+                    recovered_task = {
+                        "id": cp.task_id,
+                        "task_id": cp.task_name,
+                        "prior_work_dir": cp.workdir,
+                        "agent_config": cp.agent_config,
+                        "agent_cli_id": cp.agent_type,
+                    }
+                    t = asyncio.create_task(self._handle_task_safe(recovered_task))
+                    self._tasks.append(t)
+                    t.add_done_callback(lambda _t: self._tasks.remove(_t) if _t in self._tasks else None)
+        except Exception as e:
+            logger.warning(f"Checkpoint recovery failed (non-fatal): {e}")
 
         logger.info(f"Polling every {self.config.cloud.poll_interval}s ...")
         while self._running:
@@ -255,6 +278,9 @@ class Bridge:
             workdir = self.config.agent.workdir_template.format(task_id=task_name)
             Path(workdir).mkdir(parents=True, exist_ok=True)
 
+        # Write checkpoint before execution (for crash recovery)
+        write_checkpoint(workdir, task_id, task_name, agent_type, agent_config)
+
         # Build env vars for the agent (Multica-inspired)
         env_vars = {
             "DUS_TOKEN": self.config.cloud.api_key,
@@ -343,6 +369,9 @@ class Bridge:
                     await watcher
                 except asyncio.CancelledError:
                     pass
+
+        # Clean up checkpoint on completion
+        remove_checkpoint(workdir)
 
         if executor.was_cancelled():
             logger.info(f"Task {task_name}: was cancelled, skipping result submission")

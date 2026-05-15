@@ -242,6 +242,16 @@ async def submit_result(
         )
         db.add(log)
 
+        # Append AI response to chat history so it shows in issue conversation
+        if task.chat_session_id and payload.stdout:
+            chat_msg = ChatMessage(
+                chat_session_id=task.chat_session_id,
+                role="assistant",
+                content=payload.stdout,
+                task_id=task.id,
+            )
+            db.add(chat_msg)
+
     # Sync issue status when task finishes
     if task.issue_id and task.status in ("completed", "failed"):
         issue_stmt = select(Issue).where(Issue.id == task.issue_id)

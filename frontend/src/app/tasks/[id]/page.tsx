@@ -156,8 +156,8 @@ export default function TaskDetailPage() {
           <h2 className="text-2xl font-bold tracking-tight">任务详情</h2>
           <p className="text-destructive">任务不存在或加载失败</p>
         </div>
-        <Button variant="outline" onClick={() => router.push("/tasks")}>
-          返回任务列表
+        <Button variant="outline" onClick={() => router.back()}>
+          返回
         </Button>
       </div>
     );
@@ -172,8 +172,8 @@ export default function TaskDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={task.status} />
-          <Button variant="outline" onClick={() => router.push("/tasks")}>
-            返回列表
+          <Button variant="outline" onClick={() => router.back()}>
+            返回
           </Button>
         </div>
       </div>
