@@ -52,8 +52,10 @@ class Bridge:
         self._running_tasks = 0
         self._agent_running_tasks: dict[str, int] = {}  # agent_type → count
         self._tasks: list[asyncio.Task] = []
+        self._tasks_lock = asyncio.Lock()
         self._consecutive_401s = 0
         self._active_task_ids: set[str] = set()
+        self._active_task_ids_lock = asyncio.Lock()
 
         # Health server
         self.health = HealthServer(
@@ -116,19 +118,20 @@ class Bridge:
             checkpoints = find_checkpoints(workdir_template)
             if checkpoints:
                 logger.info(f"Found {len(checkpoints)} checkpoint(s) from previous run")
-                for cp in checkpoints:
-                    logger.info(f"Checkpoint: task={cp.task_name}, workdir={cp.workdir}, agent={cp.agent_type}")
-                    # Re-dispatch the task for execution with full context
-                    recovered_task = {
-                        "id": cp.task_id,
-                        "task_id": cp.task_name,
-                        "prior_work_dir": cp.workdir,
-                        "agent_config": cp.agent_config,
-                        "agent_cli_id": cp.agent_type,
-                    }
-                    t = asyncio.create_task(self._handle_task_safe(recovered_task))
-                    self._tasks.append(t)
-                    t.add_done_callback(lambda _t: self._tasks.remove(_t) if _t in self._tasks else None)
+                async with self._tasks_lock:
+                    for cp in checkpoints:
+                        logger.info(f"Checkpoint: task={cp.task_name}, workdir={cp.workdir}, agent={cp.agent_type}")
+                        # Re-dispatch the task for execution with full context
+                        recovered_task = {
+                            "id": cp.task_id,
+                            "task_id": cp.task_name,
+                            "prior_work_dir": cp.workdir,
+                            "agent_config": cp.agent_config,
+                            "agent_cli_id": cp.agent_type,
+                        }
+                        t = asyncio.create_task(self._handle_task_safe(recovered_task))
+                        self._tasks.append(t)
+                        t.add_done_callback(lambda _t: asyncio.create_task(self._remove_task(_t)))
         except Exception as e:
             logger.warning(f"Checkpoint recovery failed (non-fatal): {e}")
 
@@ -138,8 +141,9 @@ class Bridge:
                 tasks = await self.api.poll_tasks()
                 for task in tasks:
                     t = asyncio.create_task(self._handle_task_safe(task))
-                    self._tasks.append(t)
-                    t.add_done_callback(lambda _t: self._tasks.remove(_t) if _t in self._tasks else None)
+                    async with self._tasks_lock:
+                        self._tasks.append(t)
+                    t.add_done_callback(lambda _t: asyncio.create_task(self._remove_task(_t)))
             except Exception as e:
                 logger.error(f"Poll error: {e}")
 
@@ -213,7 +217,8 @@ class Bridge:
             self._running_tasks += 1
             self._agent_running_tasks[agent_type] = self._agent_running_tasks.get(agent_type, 0) + 1
             task_name = task.get("task_id", task["id"])
-            self._active_task_ids.add(task_name)
+            async with self._active_task_ids_lock:
+                self._active_task_ids.add(task_name)
             try:
                 await self._handle_task(task)
             except Exception as e:
@@ -221,7 +226,8 @@ class Bridge:
             finally:
                 self._running_tasks -= 1
                 self._agent_running_tasks[agent_type] = max(0, self._agent_running_tasks.get(agent_type, 1) - 1)
-                self._active_task_ids.discard(task_name)
+                async with self._active_task_ids_lock:
+                    self._active_task_ids.discard(task_name)
 
     async def _handle_task(self, task: dict):
         """Route task to executor or reminder based on agent_capability.
@@ -424,13 +430,21 @@ class Bridge:
         logger.info("Shutting down bridge...")
         self._running = False
 
+    async def _remove_task(self, task: asyncio.Task):
+        """Remove a completed task from the tracking list."""
+        async with self._tasks_lock:
+            if task in self._tasks:
+                self._tasks.remove(task)
+
     async def cleanup(self):
         self.gc.stop()
         await self.health.stop()
         # Wait for running tasks to complete gracefully
-        if self._tasks:
-            logger.info(f"Waiting for {len(self._tasks)} task(s) to complete...")
-            await asyncio.gather(*self._tasks, return_exceptions=True)
+        async with self._tasks_lock:
+            tasks_to_wait = self._tasks.copy()
+        if tasks_to_wait:
+            logger.info(f"Waiting for {len(tasks_to_wait)} task(s) to complete...")
+            await asyncio.gather(*tasks_to_wait, return_exceptions=True)
         await self.api.close()
 
 

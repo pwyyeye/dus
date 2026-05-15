@@ -92,7 +92,16 @@ class ApiClient:
                     import asyncio
                     await asyncio.sleep(RETRY_DELAY)
             except httpx.HTTPStatusError as e:
-                logger.error(f"Register HTTP {e.response.status_code}: {e.response.text}")
+                status_code = e.response.status_code
+                # Retry on 5xx server errors
+                if 500 <= status_code < 600:
+                    logger.warning(f"Register server error {status_code}, attempt {attempt}/{MAX_RETRIES}")
+                    if attempt < MAX_RETRIES:
+                        import asyncio
+                        await asyncio.sleep(RETRY_DELAY)
+                    continue
+                # Client errors - don't retry
+                logger.error(f"Register HTTP {status_code}: {e.response.text}")
                 return None
             except Exception as e:
                 logger.error(f"Register unexpected error: {e}")
@@ -109,7 +118,16 @@ class ApiClient:
                 resp.raise_for_status()
                 return resp.json()
             except httpx.HTTPStatusError as e:
-                logger.error(f"HTTP {e.response.status_code} for {method} {path}: {e.response.text}")
+                status_code = e.response.status_code
+                # Retry on 5xx server errors (temporary failures)
+                if 500 <= status_code < 600:
+                    logger.warning(f"Server error {status_code} for {method} {path}, attempt {attempt}/{MAX_RETRIES}")
+                    if attempt < MAX_RETRIES:
+                        import asyncio
+                        await asyncio.sleep(RETRY_DELAY)
+                    continue
+                # Client errors (4xx except 429) - don't retry
+                logger.error(f"HTTP {status_code} for {method} {path}: {e.response.text}")
                 return None
             except (httpx.ConnectError, httpx.ReadTimeout, httpx.ConnectTimeout) as e:
                 logger.warning(f"Network error (attempt {attempt}/{MAX_RETRIES}): {e}")

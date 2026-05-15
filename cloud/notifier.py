@@ -6,6 +6,7 @@ import asyncio
 import time
 import httpx
 import logging
+from collections import deque
 
 from config import get_settings
 
@@ -17,18 +18,25 @@ WECHAT_RATE_WINDOW = 60  # seconds
 WECHAT_RETRY_COUNT = 2
 WECHAT_RETRY_DELAY = 5  # seconds
 
-_request_timestamps: list[float] = []
+_request_timestamps: deque[float] = deque()
+_rate_limit_lock = asyncio.Lock()
 
 
-def _check_rate_limit() -> bool:
-    """Return True if under rate limit, False if exceeded."""
+async def _check_rate_limit() -> bool:
+    """Return True if under rate limit, False if exceeded. Must be called within async context."""
     now = time.monotonic()
-    # Drop timestamps older than the window
-    _request_timestamps[:] = [t for t in _request_timestamps if now - t < WECHAT_RATE_WINDOW]
-    if len(_request_timestamps) >= WECHAT_RATE_LIMIT:
-        return False
-    _request_timestamps.append(now)
-    return True
+    cutoff = now - WECHAT_RATE_WINDOW
+
+    async with _rate_limit_lock:
+        # Remove timestamps outside the window
+        while _request_timestamps and _request_timestamps[0] < cutoff:
+            _request_timestamps.popleft()
+
+        if len(_request_timestamps) >= WECHAT_RATE_LIMIT:
+            return False
+
+        _request_timestamps.append(now)
+        return True
 
 
 async def send_wechat_markdown(title: str, content: str) -> bool:
@@ -48,7 +56,7 @@ async def send_wechat_markdown(title: str, content: str) -> bool:
         logger.warning("WECHAT_WEBHOOK_URL not configured, skipping notification")
         return False
 
-    if not _check_rate_limit():
+    if not await _check_rate_limit():
         logger.warning("WeChat rate limit exceeded (%d req/%ds), skipping", WECHAT_RATE_LIMIT, WECHAT_RATE_WINDOW)
         return False
 

@@ -261,32 +261,51 @@ async def get_machines_dashboard(db: AsyncSession = Depends(get_db)):
     result = await db.execute(stmt)
     machines = result.scalars().all()
 
+    if not machines:
+        return ApiResponse(data=[])
+
+    machine_ids = [m.id for m in machines]
+    today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Batch query: get all running/dispatched tasks for all machines
+    tasks_stmt = (
+        select(Task)
+        .where(
+            Task.target_machine_id.in_(machine_ids),
+            Task.status.in_(["running", "dispatched"])
+        )
+        .order_by(Task.created_at.desc())
+    )
+    tasks_result = await db.execute(tasks_stmt)
+    all_running_tasks = tasks_result.scalars().all()
+
+    # Batch query: get completed counts for all machines
+    completed_stmt = (
+        select(Task.target_machine_id, func.count())
+        .select_from(Task)
+        .where(
+            Task.target_machine_id.in_(machine_ids),
+            Task.status == "completed",
+            Task.completed_at >= today_start
+        )
+        .group_by(Task.target_machine_id)
+    )
+    completed_result = await db.execute(completed_stmt)
+    completed_counts = {row[0]: row[1] for row in completed_result.all()}
+
+    # Group running tasks by machine_id
+    tasks_by_machine: dict[str, list[Task]] = {}
+    for task in all_running_tasks:
+        mid = str(task.target_machine_id)
+        if mid not in tasks_by_machine:
+            tasks_by_machine[mid] = []
+        tasks_by_machine[mid].append(task)
+
     dashboard_data = []
     for machine in machines:
-        tasks_stmt = (
-            select(Task)
-            .where(
-                Task.target_machine_id == machine.id,
-                Task.status.in_(["running", "dispatched"])
-            )
-            .order_by(Task.created_at.desc())
-            .limit(5)
-        )
-        tasks_result = await db.execute(tasks_stmt)
-        running_tasks = tasks_result.scalars().all()
-
-        today_start = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        completed_stmt = (
-            select(func.count())
-            .select_from(Task)
-            .where(
-                Task.target_machine_id == machine.id,
-                Task.status == "completed",
-                Task.completed_at >= today_start
-            )
-        )
-        completed_result = await db.execute(completed_stmt)
-        completed_count = completed_result.scalar() or 0
+        mid = str(machine.id)
+        running_tasks = tasks_by_machine.get(mid, [])[:5]  # Limit to 5 per machine
+        completed_count = completed_counts.get(machine.id, 0)
 
         dashboard_data.append(
             MachineDashboardResponse(

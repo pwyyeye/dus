@@ -60,9 +60,10 @@ class Checkpoint:
         )
 
 
-def write_checkpoint(workdir: str, task_id: str, task_name: str, agent_type: str, agent_config: dict | None = None) -> str:
-    """Write checkpoint file to workdir. Returns the checkpoint path."""
+def write_checkpoint(workdir: str, task_id: str, task_name: str, agent_type: str, agent_config: dict | None = None) -> str | None:
+    """Write checkpoint file to workdir atomically. Returns the checkpoint path on success, None on failure."""
     checkpoint_path = os.path.join(workdir, CHECKPOINT_FILENAME)
+    tmp_path = checkpoint_path + ".tmp"
     checkpoint = Checkpoint(
         task_id=task_id,
         task_name=task_name,
@@ -72,12 +73,24 @@ def write_checkpoint(workdir: str, task_id: str, task_name: str, agent_type: str
         created_at=datetime.now(timezone.utc).isoformat(),
     )
     try:
-        with open(checkpoint_path, "w", encoding="utf-8") as f:
+        # Write to temp file first for atomic replace
+        with open(tmp_path, "w", encoding="utf-8") as f:
             json.dump(checkpoint.to_dict(), f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        # Atomic rename (on POSIX, mostly atomic on Windows)
+        os.replace(tmp_path, checkpoint_path)
         logger.debug(f"Checkpoint written: {checkpoint_path}")
+        return checkpoint_path
     except Exception as e:
         logger.warning(f"Failed to write checkpoint {checkpoint_path}: {e}")
-    return checkpoint_path
+        # Clean up temp file if it exists
+        if os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except Exception:
+                pass
+        return None
 
 
 def read_checkpoint(workdir: str) -> Checkpoint | None:

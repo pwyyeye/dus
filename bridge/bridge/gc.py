@@ -35,6 +35,7 @@ class GCLoop:
         self.gc_ttl = gc_ttl
         self._running = False
         self._task: asyncio.Task | None = None
+        self._stop_event = asyncio.Event()
 
     def start(self):
         """Start the GC loop as a background task."""
@@ -42,12 +43,14 @@ class GCLoop:
             logger.info("GC: disabled")
             return
         self._running = True
+        self._stop_event.clear()
         self._task = asyncio.create_task(self._loop())
         logger.info(f"GC: started (interval={self.gc_interval}s, ttl={self.gc_ttl}s)")
 
     def stop(self):
         """Stop the GC loop."""
         self._running = False
+        self._stop_event.set()
         if self._task and not self._task.done():
             self._task.cancel()
 
@@ -71,9 +74,8 @@ class GCLoop:
             self._run_once()
 
     async def _wait_for_stop(self):
-        """Block until _running becomes False."""
-        while self._running:
-            await asyncio.sleep(0.5)
+        """Block until stop is requested."""
+        await self._stop_event.wait()
 
     def _run_once(self):
         """Perform one GC scan."""
@@ -106,8 +108,8 @@ class GCLoop:
                             if age < self.gc_ttl:
                                 skipped += 1
                                 continue
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"GC: failed to parse meta for {entry}: {e}")
                 else:
                     # No meta: check directory mtime as fallback
                     try:
@@ -116,13 +118,14 @@ class GCLoop:
                         if age < self.gc_ttl:
                             skipped += 1
                             continue
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"GC: failed to stat {entry}: {e}")
                         continue
 
                 # Eligible for cleanup
                 try:
                     import shutil
-                    shutil.rmtree(entry)
+                    await asyncio.to_thread(shutil.rmtree, entry)
                     cleaned += 1
                     logger.info(f"GC: removed stale workdir {entry}")
                 except Exception as e:

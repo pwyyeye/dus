@@ -1,22 +1,50 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || "change-me-to-a-strong-random-string-at-least-32-chars";
+const API_KEY = process.env.NEXT_PUBLIC_API_KEY;
+
+if (!API_KEY && process.env.NODE_ENV === "development") {
+  console.warn("[API] NEXT_PUBLIC_API_KEY not set, requests will likely fail");
+}
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-Key": API_KEY,
-      ...options.headers,
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.detail || `API Error: ${res.status}`);
+  if (!API_KEY) {
+    throw new Error("API key not configured: NEXT_PUBLIC_API_KEY environment variable is required");
   }
 
-  return res.json();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": API_KEY,
+        ...options.headers,
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!res.ok) {
+      let detail = `API Error: ${res.status}`;
+      try {
+        const body = await res.json();
+        detail = body.detail || detail;
+      } catch {
+        // Response was not JSON, use status code only
+      }
+      throw new Error(detail);
+    }
+
+    return res.json();
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err instanceof Error && err.name === "AbortError") {
+      throw new Error("Request timeout after 30s");
+    }
+    throw err;
+  }
 }
 
 // ── Types ──
