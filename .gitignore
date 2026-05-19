@@ -36,3 +36,4 @@ alembic/versions/__pycache__/
 */pnpm-lock.yaml
 .gstack/
 # multica-main/
+.npm-cache/

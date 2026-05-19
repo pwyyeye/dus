@@ -63,7 +63,7 @@ class GCLoop:
         except asyncio.TimeoutError:
             pass
 
-        self._run_once()
+        await self._run_once()
 
         while self._running:
             try:
@@ -71,13 +71,13 @@ class GCLoop:
                 return
             except asyncio.TimeoutError:
                 pass
-            self._run_once()
+            await self._run_once()
 
     async def _wait_for_stop(self):
         """Block until stop is requested."""
         await self._stop_event.wait()
 
-    def _run_once(self):
+    async def _run_once(self):
         """Perform one GC scan."""
         try:
             base_dir = self._extract_base_dir()

@@ -1,0 +1,23 @@
+appId: com.dus.desktop
+productName: DUS Desktop
+directories:
+  buildResources: build
+files:
+  - "!**/.vscode/*"
+  - "!src/*"
+  - "!electron.vite.config.*"
+  - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+win:
+  target:
+    - nsis
+  artifactName: dus-desktop-${version}-windows-${arch}.${ext}
+mac:
+  target:
+    - dmg
+    - zip
+  artifactName: dus-desktop-${version}-mac-${arch}.${ext}
+linux:
+  target:
+    - AppImage
+  artifactName: dus-desktop-${version}-linux-${arch}.${ext}
+npmRebuild: false
